@@ -63,9 +63,12 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
         return $this->minValue;
     }
 
+    /**
+     * @return $this
+     */
     public function setMinValue(?float $minValue): static
     {
-        $this->minValue = $this->getAsFloatCast($minValue);
+        $this->minValue = $minValue;
 
         return $this;
     }
@@ -75,9 +78,12 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
         return $this->maxValue;
     }
 
+    /**
+     * @return $this
+     */
     public function setMaxValue(?float $maxValue): static
     {
-        $this->maxValue = $this->getAsFloatCast($maxValue);
+        $this->maxValue = $maxValue;
 
         return $this;
     }
@@ -87,6 +93,9 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
         return $this->vertical;
     }
 
+    /**
+     * @return $this
+     */
     public function setVertical(bool $vertical): static
     {
         $this->vertical = $vertical;
@@ -99,9 +108,12 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
         return $this->increment;
     }
 
+    /**
+     * @return $this
+     */
     public function setIncrement(?float $increment): static
     {
-        $this->increment = $this->getAsFloatCast($increment);
+        $this->increment = $increment;
 
         return $this;
     }
@@ -111,9 +123,12 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
         return $this->decimalPrecision;
     }
 
+    /**
+     * @return $this
+     */
     public function setDecimalPrecision(?int $decimalPrecision): static
     {
-        $this->decimalPrecision = $this->getAsIntegerCast($decimalPrecision);
+        $this->decimalPrecision = $decimalPrecision;
 
         return $this;
     }
@@ -123,7 +138,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      *
      * @see ResourcePersistenceAwareInterface::getDataForResource
      */
-    public function getDataForResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?float
+    public function getDataForResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?float
     {
         if ($data != null) {
             $data = (float) $data;
@@ -137,7 +152,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      *
      * @see ResourcePersistenceAwareInterface::getDataFromResource
      */
-    public function getDataFromResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?float
+    public function getDataFromResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?float
     {
         if ($data != null) {
             $data = (float) $data;
@@ -151,7 +166,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      *
      * @see QueryResourcePersistenceAwareInterface::getDataForQueryResource
      */
-    public function getDataForQueryResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?float
+    public function getDataForQueryResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?float
     {
         return $data;
     }
@@ -162,7 +177,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      * @see Data::getDataForEditmode
      *
      */
-    public function getDataForEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?float
+    public function getDataForEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?float
     {
         return $this->getDataForResource($data, $object, $params);
     }
@@ -173,7 +188,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      * @see Data::getDataFromEditmode
      *
      */
-    public function getDataFromEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?float
+    public function getDataFromEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?float
     {
         return $this->getDataFromResource($data, $object, $params);
     }
@@ -182,7 +197,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      * @param Model\DataObject\Concrete|null $object
      *
      */
-    public function getDataFromGridEditor(mixed $data, Concrete $object = null, array $params = []): ?float
+    public function getDataFromGridEditor(mixed $data, ?Concrete $object = null, array $params = []): ?float
     {
         return $this->getDataFromEditmode($data, $object, $params);
     }
@@ -193,7 +208,7 @@ class Slider extends Data implements ResourcePersistenceAwareInterface, QueryRes
      * @see Data::getVersionPreview
      *
      */
-    public function getVersionPreview(mixed $data, DataObject\Concrete $object = null, array $params = []): string
+    public function getVersionPreview(mixed $data, ?DataObject\Concrete $object = null, array $params = []): string
     {
         return (string)$data;
     }

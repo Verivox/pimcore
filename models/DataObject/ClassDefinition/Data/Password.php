@@ -16,6 +16,8 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\DataObject\ClassDefinition\Data;
 
+use Exception;
+use Pimcore\Config;
 use Pimcore\Model;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\ClassDefinition\Data;
@@ -30,26 +32,6 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
     use DataObject\Traits\DataWidthTrait;
     use DataObject\Traits\SimpleNormalizerTrait;
 
-    const HASH_FUNCTION_PASSWORD_HASH = 'password_hash';
-
-    /**
-     * @internal
-     *
-     */
-    public string $algorithm = self::HASH_FUNCTION_PASSWORD_HASH;
-
-    /**
-     * @internal
-     *
-     */
-    public string $salt = '';
-
-    /**
-     * @internal
-     *
-     */
-    public string $saltlocation = '';
-
     public ?int $minimumLength = null;
 
     public function getMinimumLength(): ?int
@@ -62,68 +44,19 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
         $this->minimumLength = $minimumLength;
     }
 
-    public function setAlgorithm(string $algorithm): void
-    {
-        $this->algorithm = $algorithm;
-    }
-
-    public function getAlgorithm(): string
-    {
-        return $this->algorithm;
-    }
-
-    public function setSalt(string $salt): void
-    {
-        $this->salt = $salt;
-    }
-
-    public function getSalt(): string
-    {
-        return $this->salt;
-    }
-
-    public function setSaltlocation(string $saltlocation): void
-    {
-        $this->saltlocation = $saltlocation;
-    }
-
-    public function getSaltlocation(): string
-    {
-        return $this->saltlocation;
-    }
-
     /**
      *
      *
      * @see ResourcePersistenceAwareInterface::getDataForResource
      */
-    public function getDataForResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataForResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         if (empty($data)) {
             return null;
         }
 
-        // is already a hashed string? Then do not re-hash
         $info = password_get_info($data);
         if ($info['algo'] !== null && $info['algo'] !== 0) {
-            return $data;
-        }
-
-        // password_get_info() will not detect older, less secure, hashing algos.
-        // It might not detect some less common ones as well.
-        $maybeHash = preg_match('/^[a-f0-9]{32,}$/i', $data);
-        $hashLenghts = [
-            32,  // MD2, MD4, MD5, RIPEMD-128, Snefru 128, Tiger/128, HAVAL128
-            40,  // SHA-1, HAS-160, RIPEMD-160, Tiger/160, HAVAL160
-            48,  // Tiger/192, HAVAL192
-            56,  // SHA-224, HAVAL224
-            64,  // SHA-256, BLAKE-256, GOST, GOST CryptoPro, HAVAL256, RIPEMD-256, Snefru 256
-            96,  // SHA-384
-            128, // SHA-512, BLAKE-512, SWIFFT
-        ];
-
-        if ($maybeHash && in_array(strlen($data), $hashLenghts, true)) {
-            // Probably already a hashed string
             return $data;
         }
 
@@ -138,7 +71,11 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
             ? $params['owner']
             : ($object ?: null);
 
-        if (null !== $passwordModel && !$passwordModel instanceof DataObject\Classificationstore && !$passwordModel instanceof DataObject\Localizedfield) {
+        if (
+            null !== $passwordModel &&
+            !$passwordModel instanceof DataObject\Classificationstore &&
+            !$passwordModel instanceof DataObject\Localizedfield
+        ) {
             $setter = 'set' . ucfirst($this->getName());
             $passwordModel->$setter($hashed);
         }
@@ -155,23 +92,9 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
      */
     public function calculateHash(string $data): string
     {
-        if ($this->algorithm === static::HASH_FUNCTION_PASSWORD_HASH) {
-            $config = \Pimcore::getContainer()->getParameter('pimcore.config')['security']['password'];
+        $config = Config::getSystemConfiguration()['security']['password'];
 
-            $hash = password_hash($data, $config['algorithm'], $config['options']);
-        } else {
-            if (!empty($this->salt)) {
-                $data = match ($this->saltlocation) {
-                    'back' => $data . $this->salt,
-                    'front' => $this->salt . $data,
-                    default => $data,
-                };
-            }
-
-            $hash = hash($this->algorithm, $data);
-        }
-
-        return $hash;
+        return password_hash($data, $config['algorithm'], $config['options']);
     }
 
     /**
@@ -195,22 +118,17 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
             return false;
         }
 
-        if ($this->getAlgorithm() === static::HASH_FUNCTION_PASSWORD_HASH) {
-            $result = password_verify($password, $objectHash);
+        $result = password_verify($password, $objectHash);
 
-            if ($result && $updateHash) {
-                $config = \Pimcore::getContainer()->getParameter('pimcore.config')['security']['password'];
+        if ($result && $updateHash) {
+            $config = Config::getSystemConfiguration()['security']['password'];
 
-                if (password_needs_rehash($objectHash, $config['algorithm'], $config['options'])) {
-                    $newHash = $this->calculateHash($password);
+            if (password_needs_rehash($objectHash, $config['algorithm'], $config['options'])) {
+                $newHash = $this->calculateHash($password);
 
-                    $object->$setter($newHash);
-                    $object->save();
-                }
+                $object->$setter($newHash);
+                $object->save();
             }
-        } else {
-            $hash = $this->calculateHash($password);
-            $result = hash_equals($objectHash, $hash);
         }
 
         return $result;
@@ -221,7 +139,7 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
      *
      * @see ResourcePersistenceAwareInterface::getDataFromResource
      */
-    public function getDataFromResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataFromResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         return $data;
     }
@@ -231,12 +149,12 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
      *
      * @see QueryResourcePersistenceAwareInterface::getDataForQueryResource
      */
-    public function getDataForQueryResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataForQueryResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         return $this->getDataForResource($data, $object, $params);
     }
 
-    public function getDataForEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataForEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         return $data;
     }
@@ -245,7 +163,7 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
      * @see Data::getDataFromEditmode
      *
      */
-    public function getDataFromEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataFromEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         if ($data === '') {
             return null;
@@ -260,7 +178,7 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
      * @see Data::getVersionPreview
      *
      */
-    public function getVersionPreview(mixed $data, DataObject\Concrete $object = null, array $params = []): string
+    public function getVersionPreview(mixed $data, ?DataObject\Concrete $object = null, array $params = []): string
     {
         return '******';
     }
@@ -280,7 +198,7 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
         return true;
     }
 
-    public function getDiffDataFromEditmode(array $data, DataObject\Concrete $object = null, array $params = []): mixed
+    public function getDiffDataFromEditmode(array $data, ?DataObject\Concrete $object = null, array $params = []): mixed
     {
         return $data[0]['data'];
     }
@@ -288,14 +206,14 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
     /** See parent class.
      *
      */
-    public function getDiffDataForEditMode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?array
+    public function getDiffDataForEditMode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?array
     {
         $diffdata = [];
         $diffdata['data'] = $data;
         $diffdata['disabled'] = !($this->isDiffChangeAllowed($object, $params));
         $diffdata['field'] = $this->getName();
         $diffdata['key'] = $this->getName();
-        $diffdata['type'] = $this->fieldtype;
+        $diffdata['type'] = $this->getFieldType();
 
         if ($data) {
             $diffdata['value'] = $this->getVersionPreview($data, $object, $params);
@@ -308,16 +226,6 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
         $result[] = $diffdata;
 
         return $result;
-    }
-
-    /**
-     * @param DataObject\ClassDefinition\Data\Password $mainDefinition
-     */
-    public function synchronizeWithMainDefinition(DataObject\ClassDefinition\Data $mainDefinition): void
-    {
-        $this->algorithm = $mainDefinition->algorithm;
-        $this->salt = $mainDefinition->salt;
-        $this->saltlocation = $mainDefinition->saltlocation;
     }
 
     public function getParameterTypeDeclaration(): ?string
@@ -342,7 +250,7 @@ class Password extends Data implements ResourcePersistenceAwareInterface, QueryR
 
     /**
      *
-     * @throws Model\Element\ValidationException|\Exception
+     * @throws Model\Element\ValidationException|Exception
      */
     public function checkValidity(mixed $data, bool $omitMandatoryCheck = false, array $params = []): void
     {

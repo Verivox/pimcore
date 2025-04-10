@@ -16,13 +16,19 @@ declare(strict_types=1);
 
 namespace Pimcore\Cache;
 
-class RuntimeCache extends \ArrayObject
+use ArrayObject;
+use Exception;
+use Pimcore;
+
+class RuntimeCache extends ArrayObject
 {
     private const SERVICE_ID = __CLASS__;
 
     protected static ?RuntimeCache $tempInstance = null;
 
     protected static ?RuntimeCache $instance = null;
+
+    private static bool $disabled = false;
 
     /**
      * Retrieves the default registry instance.
@@ -34,11 +40,9 @@ class RuntimeCache extends \ArrayObject
             return self::$instance;
         }
 
-        if (\Pimcore::hasContainer()) {
-            $container = \Pimcore::getContainer();
+        if (Pimcore::hasContainer()) {
+            $container = Pimcore::getContainer();
 
-            /** @var self $instance */
-            $instance = null;
             if ($container->initialized(self::SERVICE_ID)) {
                 $instance = $container->get(self::SERVICE_ID);
             } else {
@@ -71,6 +75,29 @@ class RuntimeCache extends \ArrayObject
     }
 
     /**
+     * disables the caching for the current process, this is useful for importers, ...
+     * There are no new objects will be cached after that
+     */
+    public static function disable(): void
+    {
+        self::$disabled = true;
+    }
+
+    /**
+     * see @ self::disable()
+     * just enabled the caching in the current process
+     */
+    public static function enable(): void
+    {
+        self::$disabled = false;
+    }
+
+    public static function isEnabled(): bool
+    {
+        return !self::$disabled;
+    }
+
+    /**
      * getter method, basically same as offsetGet().
      *
      * This method can be called from an object of type \Pimcore\Cache\Runtime, or it
@@ -79,14 +106,14 @@ class RuntimeCache extends \ArrayObject
      *
      * @param string $index - get the value associated with $index
      *
-     * @throws \Exception if no entry is registered for $index.
+     * @throws Exception if no entry is registered for $index.
      */
     public static function get(string $index): mixed
     {
         $instance = self::getInstance();
 
         if (!$instance->offsetExists($index)) {
-            throw new \Exception("No entry is registered for key '$index'");
+            throw new Exception("No entry is registered for key '$index'");
         }
 
         return $instance->offsetGet($index);
@@ -137,6 +164,11 @@ class RuntimeCache extends \ArrayObject
 
     public function offsetSet($index, $value): void
     {
+        // check if caching is disabled for this process
+        if (self::$disabled) {
+            return;
+        }
+
         parent::offsetSet($index, $value);
     }
 
@@ -171,7 +203,7 @@ class RuntimeCache extends \ArrayObject
             }
         }
 
-        \Pimcore::getContainer()->set(self::SERVICE_ID, $newInstance);
+        Pimcore::getContainer()->set(self::SERVICE_ID, $newInstance);
         self::$instance = $newInstance;
     }
 }

@@ -15,6 +15,8 @@
 
 namespace Pimcore\Model\Translation;
 
+use Doctrine\DBAL\ArrayParameterType;
+use Exception;
 use Pimcore\Db\Helper;
 use Pimcore\Logger;
 use Pimcore\Model;
@@ -43,7 +45,7 @@ class Dao extends Model\Dao\AbstractDao
      * @throws NotFoundResourceException
      * @throws \Doctrine\DBAL\Exception
      */
-    public function getByKey(string $key, array $languages = null): void
+    public function getByKey(string $key, ?array $languages = null): void
     {
         if (is_array($languages)) {
             $sql = 'SELECT * FROM ' . $this->getDatabaseTableName() . ' WHERE `key` = :key
@@ -54,7 +56,7 @@ class Dao extends Model\Dao\AbstractDao
 
         $data = $this->db->fetchAllAssociative($sql,
             ['key' => $key, 'languages' => $languages],
-            ['languages' => \Doctrine\DBAL\Connection::PARAM_STR_ARRAY]
+            ['languages' => ArrayParameterType::STRING]
         );
 
         if (!empty($data)) {
@@ -98,15 +100,20 @@ class Dao extends Model\Dao\AbstractDao
                     continue;
                 }
 
+                if ($text != strip_tags($text)) {
+                    $text = $sanitizer->sanitizeFor('body', $text);
+                    $this->model->addTranslation($language, $text);
+                }
+
                 $data = [
-                    'key' => $this->model->getKey(),
-                    'type' => $this->model->getType(),
-                    'language' => $language,
-                    'text' => $sanitizer->sanitize($text),
-                    'modificationDate' => $this->model->getModificationDate(),
-                    'creationDate' => $this->model->getCreationDate(),
-                    'userOwner' => $this->model->getUserOwner(),
-                    'userModification' => $this->model->getUserModification(),
+                'key' => $this->model->getKey(),
+                'type' => $this->model->getType(),
+                'language' => $language,
+                'text' => $text,
+                'modificationDate' => $this->model->getModificationDate(),
+                'creationDate' => $this->model->getCreationDate(),
+                'userOwner' => $this->model->getUserOwner(),
+                'userModification' => $this->model->getUserModification(),
                 ];
                 Helper::upsert($this->db, $this->getDatabaseTableName(), $data, $this->getPrimaryKey($this->getDatabaseTableName()));
             }
@@ -172,7 +179,7 @@ class Dao extends Model\Dao\AbstractDao
             $this->db->fetchOne(sprintf('SELECT * FROM translations_%s LIMIT 1;', $domain));
 
             return true;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return false;
         }
     }
@@ -182,7 +189,7 @@ class Dao extends Model\Dao\AbstractDao
         $table = $this->getDatabaseTableName();
 
         if ($table == self::TABLE_PREFIX) {
-            throw new \Exception('Domain is missing to create new translation domain');
+            throw new Exception('Domain is missing to create new translation domain');
         }
 
         $this->db->executeQuery('CREATE TABLE IF NOT EXISTS `' . $table . "` (

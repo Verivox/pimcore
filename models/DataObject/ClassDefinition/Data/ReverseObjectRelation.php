@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\DataObject\ClassDefinition\Data;
 
+use Exception;
 use Pimcore\Db;
 use Pimcore\Logger;
 use Pimcore\Model;
@@ -28,7 +29,6 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
 {
     /**
      * @internal
-     *
      */
     public ?string $ownerClassName = null;
 
@@ -57,6 +57,9 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
         return $this;
     }
 
+    /**
+     * @return $this
+     */
     public function setOwnerClassName(string $ownerClassName): static
     {
         $this->ownerClassName = $ownerClassName;
@@ -73,8 +76,10 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
                     return null;
                 }
                 $class = DataObject\ClassDefinition::getById($this->ownerClassId);
-                $this->ownerClassName = $class->getName();
-            } catch (\Exception $e) {
+                if ($class instanceof DataObject\ClassDefinition) {
+                    $this->ownerClassName = $class->getName();
+                }
+            } catch (Exception $e) {
                 Logger::error($e->getMessage());
             }
         }
@@ -93,7 +98,7 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
                     return null;
                 }
                 $this->ownerClassId = $class->getId();
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Logger::error($e->getMessage());
             }
         }
@@ -161,9 +166,7 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
         }, $relations);
 
         $data = $this->loadData($relations, $object, $params);
-        if ($object instanceof Model\Element\DirtyIndicatorInterface) {
-            $object->markFieldDirty($this->getName(), false);
-        }
+        $object->markFieldDirty($this->getName(), false);
 
         return $data['data'];
     }
@@ -178,14 +181,11 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
         return [];
     }
 
-    public function isOptimizedAdminLoading(): bool
-    {
-        return true;
-    }
-
     public function preGetData(mixed $container, array $params = []): array
     {
-        return $this->load($container);
+        $data = $this->load($container);
+
+        return $this->filterUnpublishedElements($data);
     }
 
     /**
@@ -199,5 +199,14 @@ class ReverseObjectRelation extends ManyToManyObjectRelation
     public function getFieldType(): string
     {
         return 'reverseObjectRelation';
+    }
+
+    public function getClasses(): array
+    {
+        if ($this->getOwnerClassId()) {
+            return Model\Element\Service::fixAllowedTypes([$this->ownerClassName], 'classes');
+        }
+
+        return [];
     }
 }

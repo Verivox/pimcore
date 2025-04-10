@@ -17,7 +17,11 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\SeoBundle\Sitemap\Document;
 
+use Exception;
+use Generator;
+use Pimcore;
 use Pimcore\Bundle\SeoBundle\Sitemap\Element\AbstractElementGenerator;
+use Pimcore\Logger;
 use Pimcore\Model\Document;
 use Pimcore\Model\Site;
 use Presta\SitemapBundle\Service\UrlContainerInterface;
@@ -54,6 +58,7 @@ class DocumentTreeGenerator extends AbstractElementGenerator
         $options->setDefaults([
             'rootId' => 1,
             'handleMainDomain' => true,
+            'handleCurrentSite' => false,
             'handleSites' => true,
             'urlGeneratorOptions' => [],
             'garbageCollectThreshold' => 50,
@@ -61,17 +66,33 @@ class DocumentTreeGenerator extends AbstractElementGenerator
 
         $options->setAllowedTypes('rootId', 'int');
         $options->setAllowedTypes('handleMainDomain', 'bool');
+        $options->setAllowedTypes('handleCurrentSite', 'bool');
         $options->setAllowedTypes('handleSites', 'bool');
         $options->setAllowedTypes('urlGeneratorOptions', 'array');
         $options->setAllowedTypes('garbageCollectThreshold', 'int');
     }
 
-    public function populate(UrlContainerInterface $urlContainer, string $section = null): void
+    public function populate(UrlContainerInterface $urlContainer, ?string $section = null): void
     {
-        if ($this->options['handleMainDomain'] && null === $section || $section === 'default') {
+        if ($this->options['handleMainDomain'] && (null === $section || $section === 'default')) {
             $rootDocument = Document::getById($this->options['rootId']);
 
-            $this->populateCollection($urlContainer, $rootDocument, 'default');
+            if ($rootDocument instanceof Document) {
+                $this->populateCollection($urlContainer, $rootDocument, 'default');
+            }
+        }
+
+        if ($this->options['handleCurrentSite']) {
+            try {
+                $currentSite = Site::getCurrentSite();
+                $rootDocument = $currentSite->getRootDocument();
+                if ($rootDocument instanceof Document) {
+                    $siteSection = sprintf('site_%s', $currentSite->getId());
+                    $this->populateCollection($urlContainer, $rootDocument, $siteSection, $currentSite);
+                }
+            } catch (Exception $e) {
+                Logger::error('Cannot determine current domain for sitemap generation');
+            }
         }
 
         if ($this->options['handleSites']) {
@@ -86,7 +107,7 @@ class DocumentTreeGenerator extends AbstractElementGenerator
         }
     }
 
-    private function populateCollection(UrlContainerInterface $urlContainer, Document $rootDocument, string $section, Site $site = null): void
+    private function populateCollection(UrlContainerInterface $urlContainer, Document $rootDocument, string $section, ?Site $site = null): void
     {
         $context = new DocumentGeneratorContext($urlContainer, $section, $site);
         $visit = $this->visit($rootDocument, $context);
@@ -116,9 +137,9 @@ class DocumentTreeGenerator extends AbstractElementGenerator
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
-    private function visit(Document $document, DocumentGeneratorContext $context): \Generator
+    private function visit(Document $document, DocumentGeneratorContext $context): Generator
     {
         if ($document instanceof Document\Hardlink) {
             $document = Document\Hardlink\Service::wrap($document);
@@ -132,7 +153,7 @@ class DocumentTreeGenerator extends AbstractElementGenerator
 
             if (++$this->currentBatchCount >= $this->options['garbageCollectThreshold']) {
                 $this->currentBatchCount = 0;
-                \Pimcore::collectGarbage();
+                Pimcore::collectGarbage();
             }
         }
 

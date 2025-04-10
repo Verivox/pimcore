@@ -17,9 +17,12 @@ declare(strict_types=1);
 namespace Pimcore\Bundle\ApplicationLoggerBundle\Controller;
 
 use Carbon\Carbon;
+use DateTime;
 use Doctrine\DBAL\Connection;
+use Doctrine\DBAL\ParameterType;
 use Doctrine\DBAL\Types\Types;
 use Pimcore\Bundle\ApplicationLoggerBundle\Handler\ApplicationLoggerDb;
+use Pimcore\Bundle\ApplicationLoggerBundle\Service\TranslationServiceInterface;
 use Pimcore\Controller\KernelControllerEventInterface;
 use Pimcore\Controller\Traits\JsonHelperTrait;
 use Pimcore\Controller\UserAwareController;
@@ -30,7 +33,7 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\HttpKernel\Event\ControllerEvent;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 /**
  * @internal
@@ -46,21 +49,22 @@ class LogController extends UserAwareController implements KernelControllerEvent
         }
     }
 
-    /**
-     * @Route("/log/show", name="pimcore_admin_bundle_applicationlogger_log_show", methods={"GET", "POST"})
-     *
-     *
-     */
-    public function showAction(Request $request, Connection $db): JsonResponse
-    {
+    #[Route('/log/show', name: 'pimcore_admin_bundle_applicationlogger_log_show', methods: ['POST'])]
+    public function showAction(
+        Request $request,
+        Connection $db,
+        TranslationServiceInterface $translationService
+    ): JsonResponse {
+        $requestSource = $request->request;
+
         $this->checkPermission('application_logging');
 
         $qb = $db->createQueryBuilder();
         $qb
-            ->select('*')
+            ->select('*, priority + 0 AS priority_key')
             ->from(ApplicationLoggerDb::TABLE_NAME)
-            ->setFirstResult($request->get('start', 0))
-            ->setMaxResults($request->get('limit', 50));
+            ->setFirstResult($requestSource->getInt('start', 0))
+            ->setMaxResults($requestSource->getInt('limit', 50));
 
         $qb->orderBy('id', 'DESC');
 
@@ -75,35 +79,35 @@ class LogController extends UserAwareController implements KernelControllerEvent
             }
         }
 
-        $priority = $request->get('priority');
-        if(!empty($priority)) {
+        $priority = $requestSource->getString('priority');
+        if (!empty($priority)) {
             $qb->andWhere($qb->expr()->eq('priority', ':priority'));
-            $qb->setParameter('priority', $priority);
+            $qb->setParameter('priority', $priority, ParameterType::INTEGER);
         }
 
-        if ($fromDate = $this->parseDateObject($request->get('fromDate'), $request->get('fromTime'))) {
+        if ($fromDate = $this->parseDateObject($requestSource->getString('fromDate'), $requestSource->getString('fromTime'))) {
             $qb->andWhere('timestamp > :fromDate');
             $qb->setParameter('fromDate', $fromDate, Types::DATETIME_MUTABLE);
         }
 
-        if ($toDate = $this->parseDateObject($request->get('toDate'), $request->get('toTime'))) {
+        if ($toDate = $this->parseDateObject($requestSource->getString('toDate'), $requestSource->getString('toTime'))) {
             $qb->andWhere('timestamp <= :toDate');
             $qb->setParameter('toDate', $toDate, Types::DATETIME_MUTABLE);
         }
 
-        if (!empty($component = $request->get('component'))) {
+        if (!empty($component = $requestSource->getString('component'))) {
             $qb->andWhere('component = ' . $qb->createNamedParameter($component));
         }
 
-        if (!empty($relatedObject = $request->get('relatedobject'))) {
+        if (!empty($relatedObject = $requestSource->getString('relatedobject'))) {
             $qb->andWhere('relatedobject = ' . $qb->createNamedParameter($relatedObject));
         }
 
-        if (!empty($message = $request->get('message'))) {
+        if (!empty($message = $requestSource->getString('message'))) {
             $qb->andWhere('message LIKE ' . $qb->createNamedParameter('%' . $message . '%'));
         }
 
-        if (!empty($pid = $request->get('pid'))) {
+        if (!empty($pid = $requestSource->getInt('pid'))) {
             $qb->andWhere('pid LIKE ' . $qb->createNamedParameter('%' . $pid . '%'));
         }
 
@@ -111,7 +115,7 @@ class LogController extends UserAwareController implements KernelControllerEvent
         $totalQb->setMaxResults(null)
             ->setFirstResult(0)
             ->select('COUNT(id) as count');
-        $total = $totalQb->executeQuery()->fetch();
+        $total = $totalQb->executeQuery()->fetchAssociative();
         $total = (int) $total['count'];
 
         $stmt = $qb->executeQuery();
@@ -131,7 +135,7 @@ class LogController extends UserAwareController implements KernelControllerEvent
                 'message' => $row['message'],
                 'date' => $row['timestamp'],
                 'timestamp' => $carbonTs->getTimestamp(),
-                'priority' => $row['priority'],
+                'priority' => $translationService->getTranslatedLogLevel($row['priority_key']),
                 'fileobject' => $fileobject,
                 'relatedobject' => $row['relatedobject'],
                 'relatedobjecttype' => $row['relatedobjecttype'],
@@ -148,7 +152,7 @@ class LogController extends UserAwareController implements KernelControllerEvent
         ]);
     }
 
-    private function parseDateObject(?string $date, ?string $time): ?\DateTime
+    private function parseDateObject(?string $date, ?string $time): ?DateTime
     {
         if (empty($date)) {
             return null;
@@ -159,37 +163,34 @@ class LogController extends UserAwareController implements KernelControllerEvent
         $dateTime = null;
         if (preg_match($pattern, $date, $dateMatches)) {
             if (!empty($time) && preg_match($pattern, $time, $timeMatches)) {
-                $dateTime = new \DateTime(sprintf('%sT%s', $dateMatches['date'], $timeMatches['time']));
+                $dateTime = new DateTime(sprintf('%sT%s', $dateMatches['date'], $timeMatches['time']));
             } else {
-                $dateTime = new \DateTime($date);
+                $dateTime = new DateTime($date);
             }
         }
 
         return $dateTime;
     }
 
-    /**
-     * @Route("/log/priority-json", name="pimcore_admin_bundle_applicationlogger_log_priorityjson", methods={"GET"})
-     *
-     *
-     */
-    public function priorityJsonAction(Request $request): JsonResponse
-    {
+    #[Route('/log/priority-json', name: 'pimcore_admin_bundle_applicationlogger_log_priorityjson', methods: ['GET'])]
+    public function priorityJsonAction(
+        TranslationServiceInterface $translationService
+    ): JsonResponse {
         $this->checkPermission('application_logging');
 
-        $priorities[] = ['key' => '', 'value' => '-'];
-        foreach (ApplicationLoggerDb::getPriorities() as $key => $p) {
-            $priorities[] = ['key' => $key, 'value' => $p];
-        }
+        $priorities = $translationService->getTranslatedLogLevels();
+        $priorities = [
+            [
+                'key' => '',
+                'value' => '-',
+            ],
+            ... $priorities,
+        ];
 
         return $this->jsonResponse(['priorities' => $priorities]);
     }
 
-    /**
-     * @Route("/log/component-json", name="pimcore_admin_bundle_applicationlogger_log_componentjson", methods={"GET"})
-     *
-     *
-     */
+    #[Route('/log/component-json', name: 'pimcore_admin_bundle_applicationlogger_log_componentjson', methods: ['GET'])]
     public function componentJsonAction(Request $request): JsonResponse
     {
         $this->checkPermission('application_logging');
@@ -202,14 +203,16 @@ class LogController extends UserAwareController implements KernelControllerEvent
         return $this->jsonResponse(['components' => $components]);
     }
 
-    /**
-     * @Route("/log/show-file-object", name="pimcore_admin_bundle_applicationlogger_log_showfileobject", methods={"GET"})
-     */
+    #[Route(
+        '/log/show-file-object',
+        name: 'pimcore_admin_bundle_applicationlogger_log_showfileobject',
+        methods: ['GET']
+    )]
     public function showFileObjectAction(Request $request): StreamedResponse
     {
         $this->checkPermission('application_logging');
 
-        $filePath = $request->get('filePath');
+        $filePath = $request->query->getString('filePath');
         $storage = Storage::get('application_log');
 
         if ($storage->fileExists($filePath)) {

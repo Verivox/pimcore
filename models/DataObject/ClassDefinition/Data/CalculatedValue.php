@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\DataObject\ClassDefinition\Data;
 
+use Pimcore\Localization\LocaleServiceInterface;
 use Pimcore\Model;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\ClassDefinition\Data;
@@ -137,9 +138,13 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
      *
      * @see QueryResourcePersistenceAwareInterface::getDataForQueryResource
      */
-    public function getDataForQueryResource(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataForQueryResource(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
-        return $data;
+        if ($data !== null) {
+            return (string) $data;
+        }
+
+        return null;
     }
 
     /**
@@ -147,7 +152,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
      *
      * @see Data::getDataForEditmode
      */
-    public function getDataForEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): ?string
+    public function getDataForEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): ?string
     {
         if ($data instanceof Model\DataObject\Data\CalculatedValue) {
             return Model\DataObject\Service::getCalculatedFieldValueForEditMode($object, $params, $data);
@@ -163,7 +168,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
      * @see Data::getDataFromEditmode
      *
      */
-    public function getDataFromEditmode(mixed $data, DataObject\Concrete $object = null, array $params = []): mixed
+    public function getDataFromEditmode(mixed $data, ?DataObject\Concrete $object = null, array $params = []): mixed
     {
         return null;
     }
@@ -174,7 +179,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
      * @see Data::getVersionPreview
      *
      */
-    public function getVersionPreview(mixed $data, DataObject\Concrete $object = null, array $params = []): string
+    public function getVersionPreview(mixed $data, ?DataObject\Concrete $object = null, array $params = []): string
     {
         return (string)$this->getDataForEditmode($data, $object, $params);
     }
@@ -186,7 +191,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
 
     public function getForCsvExport(DataObject\Localizedfield|DataObject\Fieldcollection\Data\AbstractData|DataObject\Objectbrick\Data\AbstractData|DataObject\Concrete $object, array $params = []): string
     {
-        return $this->getDataFromObjectParam($object, $params) ?? '';
+        return (string) $this->getDataFromObjectParam($object, $params);
     }
 
     public function getQueryColumnType(): string
@@ -232,7 +237,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
         $code .= '{' . "\n";
         $code .= "\t" . 'if (!$language) {' . "\n";
         $code .= "\t\t" . 'try {' . "\n";
-        $code .= "\t\t\t" . '$locale = \Pimcore::getContainer()->get("pimcore.locale")->getLocale();'  . "\n";
+        $code .= "\t\t\t" . '$locale = \Pimcore::getContainer()->get("' . LocaleServiceInterface::class . '")->getLocale();'  . "\n";
         $code .= "\t\t\t" . 'if (\Pimcore\Tool::isValidLanguage($locale)) {'  . "\n";
         $code .= "\t\t\t\t" . '$language = (string) $locale;'  . "\n";
         $code .= "\t\t\t" . '} else {'  . "\n";
@@ -343,7 +348,7 @@ class CalculatedValue extends Data implements QueryResourcePersistenceAwareInter
         return '';
     }
 
-    public function getDataForGrid(mixed $data, DataObject\Concrete $object = null, array $params = []): mixed
+    public function getDataForGrid(mixed $data, ?DataObject\Concrete $object = null, array $params = []): mixed
     {
         return $data;
     }

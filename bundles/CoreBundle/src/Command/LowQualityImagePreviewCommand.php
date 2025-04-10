@@ -16,9 +16,12 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\Command;
 
+use Exception;
+use Pimcore;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Db\Helper;
 use Pimcore\Model\Asset;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -27,14 +30,16 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @internal
  */
+#[AsCommand(
+    name: 'pimcore:image:low-quality-preview',
+    description: 'Regenerates low-quality image previews for all image assets',
+    aliases: ['pimcore:image:svg-preview']
+)]
 class LowQualityImagePreviewCommand extends AbstractCommand
 {
     protected function configure(): void
     {
         $this
-            ->setName('pimcore:image:low-quality-preview')
-            ->setAliases(['pimcore:image:svg-preview'])
-            ->setDescription('Regenerates low quality image previews for all image assets')
             ->addOption(
                 'id',
                 null,
@@ -58,8 +63,7 @@ class LowQualityImagePreviewCommand extends AbstractCommand
                 'f',
                 InputOption::VALUE_NONE,
                 'generate preview regardless if it already exists or not'
-            )
-            ->addOption('generator', 'g', InputOption::VALUE_OPTIONAL, 'Force a generator, either `svg` or `imagick`');
+            );
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -88,11 +92,6 @@ class LowQualityImagePreviewCommand extends AbstractCommand
             $conditionVariables[] = $regex;
         }
 
-        $generator = null;
-        if ($input->getOption('generator')) {
-            $generator = $input->getOption('generator');
-        }
-
         $force = $input->getOption('force');
 
         $list = new Asset\Listing();
@@ -110,14 +109,14 @@ class LowQualityImagePreviewCommand extends AbstractCommand
                 $progressBar->advance();
                 if ($force || !$image->getLowQualityPreviewDataUri()) {
                     try {
-                        $this->output->writeln('generating low quality preview for image: ' . $image->getRealFullPath() . ' | ' . $image->getId());
-                        $image->generateLowQualityPreview($generator);
-                    } catch (\Exception $e) {
+                        $this->output->writeln('generating low-quality preview for image: ' . $image->getRealFullPath() . ' | ' . $image->getId());
+                        $image->generateLowQualityPreview();
+                    } catch (Exception $e) {
                         $this->output->writeln('<error>'.$e->getMessage().'</error>');
                     }
                 }
             }
-            \Pimcore::collectGarbage();
+            Pimcore::collectGarbage();
         }
 
         $progressBar->finish();

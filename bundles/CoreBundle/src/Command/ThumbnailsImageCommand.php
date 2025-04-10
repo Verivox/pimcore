@@ -16,10 +16,12 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\Command;
 
+use DateTime;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Console\Traits\Parallelization;
 use Pimcore\Model\Asset;
 use Pimcore\Model\Asset\Image;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -27,9 +29,16 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @internal
  */
+#[AsCommand(
+    name:'pimcore:thumbnails:image',
+    description: 'Generate image thumbnails, useful to pre-generate thumbnails in the background',
+    aliases: ['thumbnails:image']
+)]
 class ThumbnailsImageCommand extends AbstractCommand
 {
     use Parallelization;
+
+    private const DATE_FORMAT = 'Y-m-d H:i:s';
 
     protected function configure(): void
     {
@@ -37,9 +46,6 @@ class ThumbnailsImageCommand extends AbstractCommand
         self::configureCommand($this);
 
         $this
-            ->setName('pimcore:thumbnails:image')
-            ->setAliases(['thumbnails:image'])
-            ->setDescription('Generate image thumbnails, useful to pre-generate thumbnails in the background')
             ->addOption(
                 'parent',
                 null,
@@ -57,6 +63,12 @@ class ThumbnailsImageCommand extends AbstractCommand
                 null,
                 InputOption::VALUE_OPTIONAL,
                 'Filter images against the given regex pattern (path + filename), example:  ^/Sample.*urban.jpg$'
+            )
+            ->addOption(
+                'last-modified-since',
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'only create thumbnails of images that have been modified since the given date (format: ' . self::DATE_FORMAT . ' )'
             )
             ->addOption(
                 'thumbnails',
@@ -123,6 +135,12 @@ class ThumbnailsImageCommand extends AbstractCommand
                 }
             }
             $conditions[] = '('. implode(' OR ', $parentConditions) . ')';
+        }
+
+        if ($lastModifiedSince = $input->getOption('last-modified-since')) {
+            $lastModifiedSinceDate = DateTime::createFromFormat(self::DATE_FORMAT, $lastModifiedSince);
+            $conditions[] = 'modificationDate >= ?';
+            $conditionVariables[] = $lastModifiedSinceDate->getTimestamp();
         }
 
         if ($regex = $input->getOption('pathPattern')) {

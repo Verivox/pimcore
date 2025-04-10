@@ -15,6 +15,8 @@
 
 namespace Pimcore\Model\User\AbstractUser;
 
+use DateTime;
+use Exception;
 use Pimcore\Logger;
 use Pimcore\Model;
 
@@ -38,12 +40,7 @@ class Dao extends Model\Dao\AbstractDao
         }
 
         if ($data) {
-            $data['admin'] = (bool)$data['admin'];
-            $data['active'] = (bool)$data['active'];
-            $data['welcomescreen'] = (bool)$data['welcomescreen'];
-            $data['closeWarning'] = (bool)$data['closeWarning'];
-            $data['memorizeTabs'] = (bool)$data['memorizeTabs'];
-            $data['allowDirtyClose'] = (bool)$data['allowDirtyClose'];
+            $data = $this->castUserDataToBoolean($data);
             $this->assignVariablesToModel($data);
         } else {
             throw new Model\Exception\NotFoundException("user doesn't exist");
@@ -59,16 +56,39 @@ class Dao extends Model\Dao\AbstractDao
         $data = $this->db->fetchAssociative('SELECT * FROM users WHERE `type` = ? AND `name` = ?', [$this->model->getType(), $name]);
 
         if ($data) {
-            $data['admin'] = (bool)$data['admin'];
-            $data['active'] = (bool)$data['active'];
-            $data['welcomescreen'] = (bool)$data['welcomescreen'];
-            $data['closeWarning'] = (bool)$data['closeWarning'];
-            $data['memorizeTabs'] = (bool)$data['memorizeTabs'];
-            $data['allowDirtyClose'] = (bool)$data['allowDirtyClose'];
+            $data = $this->castUserDataToBoolean($data);
             $this->assignVariablesToModel($data);
         } else {
             throw new Model\Exception\NotFoundException(sprintf('User with name "%s" does not exist', $name));
         }
+    }
+
+    /**
+     *
+     * @throws Model\Exception\NotFoundException
+     */
+    public function getByPasswordRecoveryToken(string $token): void
+    {
+        $data = $this->db->fetchAssociative('SELECT * FROM users WHERE `passwordRecoveryToken` = ?', [$token]);
+
+        if ($data) {
+            $data = $this->castUserDataToBoolean($data);
+            $this->assignVariablesToModel($data);
+        } else {
+            throw new Model\Exception\NotFoundException(sprintf('Token does not match any user.'));
+        }
+    }
+
+    private function castUserDataToBoolean(array $data): array
+    {
+        $data['admin'] = (bool)$data['admin'];
+        $data['active'] = (bool)$data['active'];
+        $data['welcomescreen'] = (bool)$data['welcomescreen'];
+        $data['closeWarning'] = (bool)$data['closeWarning'];
+        $data['memorizeTabs'] = (bool)$data['memorizeTabs'];
+        $data['allowDirtyClose'] = (bool)$data['allowDirtyClose'];
+
+        return $data;
     }
 
     public function create(): void
@@ -97,12 +117,12 @@ class Dao extends Model\Dao\AbstractDao
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     public function update(): void
     {
         if (strlen($this->model->getName()) < 2) {
-            throw new \Exception('Name of user/role must be at least 2 characters long');
+            throw new Exception('Name of user/role must be at least 2 characters long');
         }
 
         $data = [];
@@ -127,7 +147,7 @@ class Dao extends Model\Dao\AbstractDao
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     public function delete(): void
     {
@@ -138,11 +158,11 @@ class Dao extends Model\Dao\AbstractDao
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     public function setLastLoginDate(): void
     {
-        $data['lastLogin'] = (new \DateTime())->getTimestamp();
+        $data['lastLogin'] = (new DateTime())->getTimestamp();
         $this->db->update('users', $data, ['id' => $this->model->getId()]);
     }
 }

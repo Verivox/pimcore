@@ -17,7 +17,7 @@ namespace Pimcore\Image;
 
 use Pimcore\Logger;
 
-abstract class Adapter
+abstract class Adapter implements AdapterInterface
 {
     protected int $width;
 
@@ -129,9 +129,9 @@ abstract class Adapter
         return $this;
     }
 
-    public function cover(int $width, int $height, array|string $orientation = 'center', bool $forceResize = false): static
+    public function cover(int $width, int $height, array|string|null $orientation = 'center', bool $forceResize = false): static
     {
-        if (empty($orientation)) {
+        if (!$orientation) {
             $orientation = 'center'; // if not set (from GUI for instance) - default value in getByLegacyConfig method of Config object too
         }
         $ratio = $this->getWidth() / $this->getHeight();
@@ -182,15 +182,12 @@ abstract class Adapter
             $cropX = min($cropX, $this->getWidth() - $width);
             $cropX = max($cropX, 0);
         } else {
-            $cropX = null;
-            $cropY = null;
+            Logger::error('Cropping not processed, because X or Y is not defined or null, proceeding with next step');
+
+            return $this;
         }
 
-        if ($cropX !== null && $cropY !== null) {
-            $this->crop($cropX, $cropY, $width, $height);
-        } else {
-            Logger::error('Cropping not processed, because X or Y is not defined or null, proceeding with next step');
-        }
+        $this->crop((int)$cropX, (int)$cropY, $width, $height);
 
         return $this;
     }
@@ -230,11 +227,6 @@ abstract class Adapter
         return $this;
     }
 
-    /**
-     * @param string $origin Origin of the X and Y coordinates (top-left, top-right, bottom-left, bottom-right or center)
-     *
-     * @return $this
-     */
     public function addOverlay(mixed $image, int $x = 0, int $y = 0, int $alpha = 100, string $composite = 'COMPOSITE_DEFAULT', string $origin = 'top-left'): static
     {
         return $this;
@@ -300,23 +292,25 @@ abstract class Adapter
     }
 
     /**
-     *
-     *
-     * @return $this|false
+     * @deprecated Provided by AdapterInterface::load() instead
      */
     abstract public function load(string $imagePath, array $options = []): static|false;
 
     /**
-     *
-     * @return $this
+     * @deprecated Provided by AdapterInterface::save() instead
      */
-    abstract public function save(string $path, string $format = null, int $quality = null): static;
+    abstract public function save(string $path, ?string $format = null, ?int $quality = null): static;
 
     abstract protected function destroy(): void;
 
+    /**
+     * @deprecated Provided by AdapterInterface::getContentOptimizedFormat() instead
+     */
     abstract public function getContentOptimizedFormat(): string;
 
     /**
+     * @deprecated Provided by AdapterInterface::supportsFormat() instead
+     *
      * @internal
      */
     abstract public function supportsFormat(string $format, bool $force = false): bool;

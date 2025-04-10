@@ -15,6 +15,8 @@
 
 namespace Pimcore\Model\DataObject\ClassDefinition\CustomLayout;
 
+use Exception;
+use Pimcore\Config;
 use Pimcore\Model;
 use Symfony\Component\Uid\Uuid as Uid;
 use Symfony\Component\Uid\UuidV4;
@@ -33,7 +35,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
 
     public function configure(): void
     {
-        $config = \Pimcore::getContainer()->getParameter('pimcore.config');
+        $config = Config::getSystemConfiguration();
 
         $storageConfig = $config['config_location']['object_custom_layouts'];
 
@@ -48,7 +50,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
      *
      * @throws Model\Exception\NotFoundException
      */
-    public function getById(string $id = null): void
+    public function getById(?string $id = null): void
     {
         if ($id != null) {
             $this->model->setId($id);
@@ -69,7 +71,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
                 $data['layoutDefinitions'] = Model\DataObject\ClassDefinition\Service::generateLayoutTreeFromArray($data['layoutDefinitions'], true);
             }
 
-            if (!empty($data['id'])) {
+            if ($data) {
                 $this->assignVariablesToModel($data);
             } else {
                 throw new Model\Exception\NotFoundException('Layout with ID ' . $id . " doesn't exist");
@@ -140,7 +142,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
     /**
      * Save custom layout
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function save(): void
     {

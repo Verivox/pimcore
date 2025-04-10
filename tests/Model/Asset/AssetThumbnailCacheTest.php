@@ -89,7 +89,7 @@ class AssetThumbnailCacheTest extends TestCase
 
         //load asset via public service controller
         $controller = new PublicServicesController();
-        $subRequest = new Request([
+        $subRequest = new Request(attributes: [
             'assetId' => $asset->getId(),
             'thumbnailName' => $thumbnailName,
             'filename' => $thumbConfig->getFilename(),
@@ -97,6 +97,7 @@ class AssetThumbnailCacheTest extends TestCase
             'prefix' => '',
         ]);
         $response = $controller->thumbnailAction($subRequest);
+        $response->sendContent(); // calls getStream() in order to generate the thumbnail file
 
         //check if cache is filled
         $this->assertNotNull($asset->getDao()->getCachedThumbnailModificationDate($thumbnailName, $thumbConfig->getFilename()));
@@ -110,7 +111,7 @@ class AssetThumbnailCacheTest extends TestCase
 
         //check via controller
         //check if thumbnail is regenerated and cache is filled
-        $subRequest = new Request([
+        $subRequest = new Request(attributes: [
             'assetId' => $asset->getId(),
             'thumbnailName' => $thumbnailName,
             'filename' => $thumbConfig->getFilename(),

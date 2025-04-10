@@ -28,14 +28,16 @@ class Version20230424084415 extends AbstractMigration
 
     public function up(Schema $schema): void
     {
-        if($schema->hasTable('documents_editables')) {
+        if ($schema->hasTable('documents_editables')) {
             $db = Db::get();
+            $db->executeStatement('SET foreign_key_checks = 0');
+
             $primaryKey = $schema->getTable('documents_editables')->getPrimaryKey()->getColumns();
             $editables = $db->fetchAllAssociative('SELECT * FROM documents_editables WHERE type = ?', ['link']);
 
             foreach ($editables as $editable) {
                 $unserialized = unserialize($editable['data']);
-                if(array_key_exists('attributes', $unserialized)) {
+                if (is_array($unserialized) && array_key_exists('attributes', $unserialized)) {
                     unset($unserialized['attributes']);
 
                     $editable['data'] = serialize($unserialized);
@@ -48,6 +50,7 @@ class Version20230424084415 extends AbstractMigration
                     );
                 }
             }
+            $db->executeStatement('SET foreign_key_checks = 1');
         }
     }
 

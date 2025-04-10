@@ -18,6 +18,9 @@ namespace Pimcore\Model\DataObject;
 
 use Doctrine\DBAL\Exception\RetryableException;
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Exception;
+use InvalidArgumentException;
+use Pimcore;
 use Pimcore\Cache;
 use Pimcore\Cache\RuntimeCache;
 use Pimcore\Db;
@@ -116,72 +119,60 @@ abstract class AbstractObject extends Model\Element\AbstractElement
      */
     protected ?string $childrenSortOrder = null;
 
+    /**
+     * @internal
+     *
+     * @var string|null
+     */
+    protected $classId = null;
+
+    /**
+     * @internal
+     *
+     */
+    protected ?array $__rawRelationData = null;
+
     protected function getBlockedVars(): array
     {
-        $blockedVars = ['versions', 'class', 'scheduledTasks', 'parent', 'parent', 'omitMandatoryCheck'];
+        $blockedVars = ['versions', 'class', 'scheduledTasks', 'omitMandatoryCheck'];
 
         if ($this->isInDumpState()) {
             // this is if we want to make a full dump of the object (eg. for a new version), including children for recyclebin
             $blockedVars = array_merge($blockedVars, ['dirtyFields']);
         } else {
             // this is if we want to cache the object
-            $blockedVars = array_merge($blockedVars, ['children', 'properties', 'properties']);
+            $blockedVars = array_merge($blockedVars, ['children', 'properties']);
         }
 
         return $blockedVars;
     }
 
-    /**
-     * @static
-     *
-     */
     public static function getHideUnpublished(): bool
     {
         return self::$hideUnpublished;
     }
 
-    /**
-     * @static
-     *
-     */
     public static function setHideUnpublished(bool $hideUnpublished): void
     {
         self::$hideUnpublished = $hideUnpublished;
     }
 
-    /**
-     * @static
-     *
-     */
     public static function doHideUnpublished(): bool
     {
         return self::$hideUnpublished;
     }
 
-    /**
-     * @static
-     *
-     */
     public static function setGetInheritedValues(bool $getInheritedValues): void
     {
         self::$getInheritedValues = $getInheritedValues;
     }
 
-    /**
-     * @static
-     *
-     */
     public static function getGetInheritedValues(): bool
     {
         return self::$getInheritedValues;
     }
 
-    /**
-     * @static
-     *
-     *
-     */
-    public static function doGetInheritedValues(Concrete $object = null): bool
+    public static function doGetInheritedValues(?Concrete $object = null): bool
     {
         if (self::$getInheritedValues && $object !== null) {
             $class = $object->getClass();
@@ -200,16 +191,8 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     /**
      * Static helper to get an object by the passed ID
      */
-    public static function getById(int|string $id, array $params = []): ?static
+    public static function getById(int $id, array $params = []): ?static
     {
-        if (is_string($id)) {
-            trigger_deprecation(
-                'pimcore/pimcore',
-                '11.0',
-                sprintf('Passing id as string to method %s is deprecated', __METHOD__)
-            );
-            $id = is_numeric($id) ? (int) $id : 0;
-        }
         if ($id < 1) {
             return null;
         }
@@ -242,7 +225,9 @@ abstract class AbstractObject extends Model\Element\AbstractElement
                     $object = self::getModelFactory()->build($className);
                     RuntimeCache::set($cacheKey, $object);
                     $object->getDao()->getById($id);
-                    $object->__setDataVersionTimestamp($object->getModificationDate());
+                    if ($object->getModificationDate() !== null) {
+                        $object->__setDataVersionTimestamp($object->getModificationDate());
+                    }
 
                     Service::recursiveResetDirtyMap($object);
 
@@ -268,7 +253,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             return null;
         }
 
-        \Pimcore::getEventDispatcher()->dispatch(
+        Pimcore::getEventDispatcher()->dispatch(
             new DataObjectEvent($object, ['params' => $params]),
             DataObjectEvents::POST_LOAD
         );
@@ -295,17 +280,13 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     *
-     * @return DataObject\Listing
-     *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function getList(array $config = []): Listing
     {
         $className = DataObject::class;
         // get classname
         if (!in_array(static::class, [__CLASS__, Concrete::class, Folder::class], true)) {
-            /** @var Concrete $tmpObject */
             $tmpObject = new static();
             if ($tmpObject instanceof Concrete) {
                 $className = 'Pimcore\\Model\\DataObject\\' . ucfirst($tmpObject->getClassName());
@@ -325,7 +306,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             return $list;
         }
 
-        throw new \Exception('Unable to initiate list class - class not found or invalid configuration');
+        throw new Exception('Unable to initiate list class - class not found or invalid configuration');
     }
 
     /**
@@ -370,7 +351,6 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     /**
      * Quick test if there are children
-     *
      */
     public function hasChildren(
         array $objectTypes = [
@@ -397,16 +377,17 @@ abstract class AbstractObject extends Model\Element\AbstractElement
         $cacheKey = $this->getListingCacheKey(func_get_args());
 
         if (!isset($this->siblings[$cacheKey])) {
-            if ($this->getParentId()) {
+            $parentElement = $this->getParent();
+            if ($parentElement) {
                 $list = new Listing();
                 $list->setUnpublished($includingUnpublished);
-                $list->addConditionParam('parentId = ?', $this->getParentId());
+                $list->addConditionParam('parentId = ?', $parentElement->getId());
                 if ($this->getId()) {
                     $list->addConditionParam('id != ?', $this->getId());
                 }
-                $list->setOrderKey('key');
                 $list->setObjectTypes($objectTypes);
-                $list->setOrder('asc');
+                $list->setOrderKey($parentElement->getChildrenSortBy());
+                $list->setOrder($parentElement->getChildrenSortOrder());
                 $this->siblings[$cacheKey] = $list;
             } else {
                 $list = new Listing();
@@ -435,7 +416,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     /**
      * @internal
      *
-     * @throws \Exception
+     * @throws Exception
      */
     protected function doDelete(): void
     {
@@ -454,7 +435,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     public function delete(): void
     {
@@ -471,16 +452,15 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             //clear parent data from registry
             $parentCacheKey = self::getCacheKey($this->getParentId());
             if (RuntimeCache::isRegistered($parentCacheKey)) {
-                /** @var AbstractObject $parent * */
                 $parent = RuntimeCache::get($parentCacheKey);
                 if ($parent instanceof self) {
                     $parent->setChildren(null);
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             try {
                 $this->rollBack();
-            } catch (\Exception $er) {
+            } catch (Exception $er) {
                 // PDO adapter throws exceptions if rollback fails
                 Logger::info((string) $er);
             }
@@ -536,7 +516,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
                 try {
                     if (!in_array($this->getType(), self::$types)) {
-                        throw new \Exception('invalid object type given: [' . $this->getType() . ']');
+                        throw new Exception('invalid object type given: [' . $this->getType() . ']');
                     }
 
                     if (!$isUpdate) {
@@ -566,10 +546,10 @@ abstract class AbstractObject extends Model\Element\AbstractElement
                     $this->commit();
 
                     break; // transaction was successfully completed, so we cancel the loop here -> no restart required
-                } catch (\Exception $e) {
+                } catch (Exception $e) {
                     try {
                         $this->rollBack();
-                    } catch (\Exception $er) {
+                    } catch (Exception $er) {
                         // PDO adapter throws exceptions if rollback fails
                         Logger::info((string) $er);
                     }
@@ -613,6 +593,16 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             }
             $this->clearDependentCache($additionalTags);
 
+            if ($differentOldPath) {
+                $this->renewInheritedProperties();
+            }
+
+            // add to queue that saves dependencies
+            $this->addToDependenciesQueue();
+
+            //Reset Relational data to force a reload
+            $this->__rawRelationData = null;
+
             $postEvent = new DataObjectEvent($this, $parameters);
             if ($isUpdate) {
                 if ($differentOldPath) {
@@ -625,7 +615,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             }
 
             return $this;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $failureEvent = new DataObjectEvent($this, $parameters);
             $failureEvent->setArgument('exception', $e);
             if ($isUpdate) {
@@ -641,27 +631,27 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     /**
      * @internal
      *
-     * @throws \Exception|DuplicateFullPathException
+     * @throws Exception|DuplicateFullPathException
      */
     protected function correctPath(): void
     {
         // set path
         if ($this->getId() != 1) { // not for the root node
             if (!Element\Service::isValidKey($this->getKey(), 'object')) {
-                throw new \Exception('invalid key for object with id [ '.$this->getId().' ] key is: [' . $this->getKey() . ']');
+                throw new Exception('invalid key for object with id [ '.$this->getId().' ] key is: [' . $this->getKey() . ']');
             }
 
             if (!$this->getParentId()) {
-                throw new \Exception('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
+                throw new Exception('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
             }
 
             if ($this->getParentId() == $this->getId()) {
-                throw new \Exception("ParentID and ID are identical, an element can't be the parent of itself in the tree.");
+                throw new Exception("ParentID and ID are identical, an element can't be the parent of itself in the tree.");
             }
 
             $parent = DataObject::getById($this->getParentId());
             if (!$parent) {
-                throw new \Exception('ParentID not found.');
+                throw new Exception('ParentID not found.');
             }
 
             // use the parent's path from the database here (getCurrentFullPath), to ensure the path really exists and does not rely on the path
@@ -669,7 +659,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             $this->setPath(str_replace('//', '/', $parent->getCurrentFullPath().'/'));
 
             if (strlen($this->getKey()) < 1) {
-                throw new \Exception('DataObject requires key');
+                throw new Exception('DataObject requires key');
             }
         } elseif ($this->getId() == 1) {
             // some data in root node should always be the same
@@ -693,47 +683,32 @@ abstract class AbstractObject extends Model\Element\AbstractElement
         $this->validatePathLength();
     }
 
-    /**
-     *
-     * @throws \Exception
+    /*
+     * @throws Exception
      *
      * @internal
      */
-    protected function update(bool $isUpdate = null, array $params = []): void
+    protected function update(?bool $isUpdate = null, array $params = []): void
     {
         $this->updateModificationInfos();
 
-        // save properties
-        $this->getProperties();
-        $this->getDao()->deleteAllProperties();
+        if ($this->isFieldDirty('properties')) {
+            // save properties
+            $properties = $this->getProperties();
+            $this->getDao()->deleteAllProperties();
 
-        foreach ($this->getProperties() as $property) {
-            if (!$property->getInherited()) {
-                $property->setDao(null);
-                $property->setCid($this->getId());
-                $property->setCtype('object');
-                $property->setCpath($this->getRealFullPath());
-                $property->save();
+            foreach ($properties as $property) {
+                if (!$property->getInherited()) {
+                    $property->setDao(null);
+                    $property->setCid($this->getId());
+                    $property->setCtype('object');
+                    $property->setCpath($this->getRealFullPath());
+                    $property->save();
+                }
             }
         }
 
-        // save dependencies
-        $d = new Model\Dependency();
-        $d->setSourceType('object');
-        $d->setSourceId($this->getId());
-
-        foreach ($this->resolveDependencies() as $requirement) {
-            if ($requirement['id'] == $this->getId() && $requirement['type'] === 'object') {
-                // dont't add a reference to yourself
-                continue;
-            }
-
-            $d->addRequirement($requirement['id'], $requirement['type']);
-        }
-
-        $d->save();
-
-        //set object to registry
+        // set object to registry
         RuntimeCache::set(self::getCacheKey($this->getId()), $this);
     }
 
@@ -743,13 +718,12 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     *
      * @internal
      */
     public static function clearDependentCacheByObjectId(int $objectId, array $additionalTags = []): void
     {
         if (!$objectId) {
-            throw new \Exception('object ID missing');
+            throw new Exception('object ID missing');
         }
 
         try {
@@ -757,13 +731,12 @@ abstract class AbstractObject extends Model\Element\AbstractElement
             $tags = array_merge($tags, $additionalTags);
 
             Cache::clearTags($tags);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::crit((string) $e);
         }
     }
 
     /**
-     *
      * @internal
      */
     public function saveIndex(int $index): void
@@ -818,8 +791,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     public function setParentId(?int $parentId): static
     {
-        $parentId = (int) $parentId;
-        if ($parentId != $this->parentId) {
+        if ($parentId !== $this->parentId) {
             $this->markFieldDirty('parentId');
         }
 
@@ -892,7 +864,7 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     public function setParent(?ElementInterface $parent): static
     {
-        $newParentId = $parent instanceof self ? $parent->getId() : 0;
+        $newParentId = $parent instanceof self ? $parent->getId() : null;
         $this->setParentId($newParentId);
         /** @var Element\AbstractElement $parent */
         $this->parent = $parent;
@@ -916,28 +888,24 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     *
-     *
-     * @throws \Exception
+     * @throws Exception
      */
-    public function get(string $fieldName, string $language = null): mixed
+    public function get(string $fieldName, ?string $language = null): mixed
     {
         if (!$fieldName) {
-            throw new \Exception('Field name must not be empty.');
+            throw new Exception('Field name must not be empty.');
         }
 
         return $this->{'get'.ucfirst($fieldName)}($language);
     }
 
     /**
-     *
-     *
-     * @throws \Exception
+     * @throws Exception
      */
-    public function set(string $fieldName, mixed $value, string $language = null): mixed
+    public function set(string $fieldName, mixed $value, ?string $language = null): mixed
     {
         if (!$fieldName) {
-            throw new \Exception('Field name must not be empty.');
+            throw new Exception('Field name must not be empty.');
         }
 
         return $this->{'set'.ucfirst($fieldName)}($value, $language);
@@ -945,7 +913,6 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     /**
      * @internal
-     *
      */
     public static function isDirtyDetectionDisabled(): bool
     {
@@ -954,7 +921,6 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     /**
      * @internal
-     *
      */
     public static function setDisableDirtyDetection(bool $disableDirtyDetection): void
     {
@@ -979,8 +945,6 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
     /**
      * @internal
-     *
-     *
      */
     protected function getListingCacheKey(array $args = []): string
     {
@@ -997,7 +961,6 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     *
      * @return AbstractObject
      */
     public function setChildrenSortOrder(?string $reverseSort): Element\ElementInterface
@@ -1013,6 +976,35 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
+     * @return $this
+     */
+    public function setClassId(string $classId): static
+    {
+        $this->classId = $classId;
+
+        return $this;
+    }
+
+    public function getClassId(): ?string
+    {
+        return $this->classId;
+    }
+
+    /**
+     * @internal
+     *
+     */
+    public function __getRawRelationData(): array
+    {
+        if ($this->__rawRelationData === null) {
+            $db = Db::get();
+            $this->__rawRelationData = $db->fetchAllAssociative('SELECT * FROM object_relations_' . $this->getClassId() . ' WHERE src_id = ?', [$this->getId()]);
+        }
+
+        return $this->__rawRelationData;
+    }
+
+    /**
      * load lazy loaded fields before cloning
      */
     public function __clone(): void
@@ -1025,10 +1017,9 @@ abstract class AbstractObject extends Model\Element\AbstractElement
     }
 
     /**
-     *
      * @return mixed
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function __callStatic(string $method, array $arguments)
     {
@@ -1037,12 +1028,12 @@ abstract class AbstractObject extends Model\Element\AbstractElement
         $db = \Pimcore\Db::get();
 
         if (in_array(strtolower($propertyName), self::$objectColumns)) {
-            $value = array_key_exists(0, $arguments) ? $arguments[0] : throw new \InvalidArgumentException('Mandatory argument $value not set.');
+            $value = array_key_exists(0, $arguments) ? $arguments[0] : throw new InvalidArgumentException('Mandatory argument $value not set.');
             $limit = $arguments[1] ?? null;
             $offset = $arguments[2] ?? 0;
             $objectTypes = $arguments[3] ?? null;
 
-            $defaultCondition = $propertyName.' = '.Db::get()->quote($value).' ';
+            $defaultCondition = $db->quoteIdentifier($propertyName).' = '.$db->quote($value).' ';
 
             $listConfig = [
                 'condition' => $defaultCondition,
@@ -1071,13 +1062,11 @@ abstract class AbstractObject extends Model\Element\AbstractElement
         // there is no property for the called method, so throw an exception
         Logger::error('Class: DataObject\\AbstractObject => call to undefined static method ' . $method);
 
-        throw new \Exception('Call to undefined static method ' . $method . ' in class DataObject\\AbstractObject');
+        throw new Exception('Call to undefined static method ' . $method . ' in class DataObject\\AbstractObject');
     }
 
     /**
-     *
-     *
-     * @throws \Exception
+     * @throws Exception
      */
     protected static function makeList(array $listConfig, ?array $objectTypes): Listing
     {
@@ -1086,10 +1075,10 @@ abstract class AbstractObject extends Model\Element\AbstractElement
 
         if (empty($objectTypes)) {
             $objectTypes = $allowedObjectTypes;
-        } elseif (\array_diff($objectTypes, $allowedObjectTypes)) {
+        } elseif (array_diff($objectTypes, $allowedObjectTypes)) {
             Logger::error('Class: DataObject\\AbstractObject => Unsupported object type in array ' . implode(',', $objectTypes));
 
-            throw new \Exception('Unsupported object type in array [' . implode(',', $objectTypes) . '] in class DataObject\\AbstractObject');
+            throw new Exception('Unsupported object type in array [' . implode(',', $objectTypes) . '] in class DataObject\\AbstractObject');
         }
 
         $list->setObjectTypes($objectTypes);

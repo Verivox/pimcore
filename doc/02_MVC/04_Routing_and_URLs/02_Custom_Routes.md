@@ -60,8 +60,8 @@ class NewsController extends FrontendController
 {
     public function detailAction(Request $request): Response
     {
-        $id = $request->get('news');
-        $text = $request->get('text');
+        $id = $request->query->getInt('news');
+        $text = $request->query->getString('text');
         
         // ...
         return $this->render('news/detail.html.twig');
@@ -113,7 +113,7 @@ to do so just embrace the part with curly brackets { } (see example below).
 
 | Name     | Pattern                | Reverse          | Controller                                    | Variables | Defaults     | Site IDs | Priority     | Methods     |
 |----------|------------------------|------------------|-----------------------------------------------|-----------|--------------|----------|--------------|-------------|
-| news category  | /\\/news-category\\/([^_]+)_([0-9]+)(_category_)?([0-9]+)?/ |  /news-category/%text_%id{_category_%categoryId}    | App\Controller\NewsController::listingAction  | text,id,text2,categoryId   |              |        | 1              |       |
+| news category  | /\\/news-category\\/([^_]+)_([0-9]+)(_category_)?([0-9]+)?/ |  /news-category/%text_%id\{_category_%categoryId\}    | App\Controller\NewsController::listingAction  | text,id,text2,categoryId   |              |        | 1              |       |
   
 ![Grid with the new route](../../img/Routing_grid2.png)
 
@@ -281,7 +281,7 @@ use \Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 public function testAction(Request $request): Response
 {
-    $object = DataObject::getById((int) $request->get('id')); 
+    $object = DataObject::getById($request->query->getInt('id')); 
     if( !$object || ( !$object->isPublished() && !$this->editmode) ) {
         throw new NotFoundHttpException('Not found');
     }

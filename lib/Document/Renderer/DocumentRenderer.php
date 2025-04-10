@@ -17,13 +17,17 @@ declare(strict_types=1);
 
 namespace Pimcore\Document\Renderer;
 
+use Exception;
 use Pimcore\Event\DocumentEvents;
 use Pimcore\Event\Model\DocumentEvent;
 use Pimcore\Http\RequestHelper;
-use Pimcore\Localization\LocaleService;
+use Pimcore\Localization\LocaleServiceInterface;
 use Pimcore\Model\Document;
+use Pimcore\Model\Site;
 use Pimcore\Routing\Dynamic\DocumentRouteHandler;
 use Pimcore\Templating\Renderer\ActionRenderer;
+use Pimcore\Tool;
+use Pimcore\Tool\Frontend;
 use Pimcore\Twig\Extension\Templating\Placeholder\ContainerService;
 use Symfony\Component\HttpKernel\Fragment\FragmentRendererInterface;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
@@ -41,7 +45,7 @@ class DocumentRenderer implements DocumentRendererInterface
 
     private EventDispatcherInterface $eventDispatcher;
 
-    private LocaleService $localeService;
+    private LocaleServiceInterface $localeService;
 
     public function __construct(
         RequestHelper $requestHelper,
@@ -49,7 +53,7 @@ class DocumentRenderer implements DocumentRendererInterface
         FragmentRendererInterface $fragmentRenderer,
         DocumentRouteHandler $documentRouteHandler,
         EventDispatcherInterface $eventDispatcher,
-        LocaleService $localeService
+        LocaleServiceInterface $localeService
     ) {
         $this->requestHelper = $requestHelper;
         $this->actionRenderer = $actionRenderer;
@@ -86,8 +90,24 @@ class DocumentRenderer implements DocumentRendererInterface
 
         try {
             $request = $this->requestHelper->getCurrentRequest();
-        } catch (\Exception $e) {
-            $request = $this->requestHelper->createRequestWithContext();
+        } catch (Exception $e) {
+
+            $host = null;
+            if ($site = Frontend::getSiteForDocument($document)) {
+                Site::setCurrentSite($site);
+                $host = $site->getMainDomain();
+            } elseif ($systemMainDomain = Tool::getHostname()) {
+                $host = $systemMainDomain;
+            }
+
+            $request = $this->requestHelper->createRequestWithContext(host: $host);
+        }
+
+        if ($attributes['pimcore_static_page_generator'] ?? false) {
+            $headers = \Pimcore\Config::getSystemConfiguration('documents')['static_page_generator']['headers'];
+            foreach ($headers as $header) {
+                $request->headers->set($header['name'], $header['value']);
+            }
         }
 
         $documentLocale = $document->getProperty('language');

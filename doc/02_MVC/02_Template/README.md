@@ -48,7 +48,7 @@ template will be used for auto-rendering when the controller does not return a r
 To make Pimcore's functions available in Twig templates, Pimcore implements a set of extensions. Please see our [Demo](https://github.com/pimcore/demo)
 as first reference how to use Pimcore with Twig. 
 
-You can take a look at the [implementations](https://github.com/pimcore/pimcore/tree/11.x/pimcore/lib/Pimcore/Twig)
+You can take a look at the [implementations](https://github.com/pimcore/pimcore/tree/11.x/lib/Twig)
 for further details. Note that all of Pimcore's Twig extensions are prefixed with `pimcore` to avoid naming collisions.
 
 ### Pimcore Editables
@@ -119,6 +119,7 @@ See [Template Extensions](./02_Template_Extensions/README.md) for details.
 The following extensions can directly be used on Twig. See [Template Extensions](./02_Template_Extensions/README.md) for a 
 detailed description of every helper:
 
+**Functions:**
 * `pimcore_head_link`
 * `pimcore_head_meta`
 * `pimcore_head_script`
@@ -126,9 +127,11 @@ detailed description of every helper:
 * `pimcore_head_title`
 * `pimcore_inline_script`
 * `pimcore_placeholder`
-* `pimcore_cache`
 * `pimcore_url`
+* `pimcore_cache` (deprecated)
 
+**Tags:**
+* `pimcorecache`
 
 #### Block elements
 
@@ -136,10 +139,10 @@ As Twig does not provide a `while` control structure which is needed to iterate 
 editable, we introduced a function called `pimcore_iterate_block` to allow walking through every block element:
 
 ```twig
-{% for i in pimcore_iterate_block(pimcore_block('contentblock')) %}
-    <h2>{{ pimcore_input('subline') }}</h2>
-    {{ pimcore_wysiwyg('content') }}
-{% endfor %}
+{% pimcoreblock "contentblock" %}
+    <h2>{{ pimcore_input("subline") }}</h2>
+    {{ pimcore_wysiwyg("content") }}
+{% endpimcoreblock %}
 ```
 
 ### Tests

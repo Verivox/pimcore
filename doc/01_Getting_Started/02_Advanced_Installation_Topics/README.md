@@ -38,8 +38,40 @@ $ PIMCORE_INSTALL_MYSQL_USERNAME=username PIMCORE_INSTALL_MYSQL_PASSWORD=passwor
 
 ### Installing Bundles
 
-The `--install-bundles` flag will install and enable the specified bundles.  
-Attention: The bundles will be added to `config/bundles.php` automatically.
+#### Overview of Bundle Lists
+
+When installing, you will [interact with](#modifying-required-bundles-and-bundle-recommendations) two lists of
+bundles: **Recommended Bundles** and **Required Bundles**.
+
+- **Recommended Bundles**:
+    - Displayed to users during interactive mode.
+    - These are the bundles users can specify when using the `--install-bundles=commaSeparatedBundleList` option.
+
+- **Required Bundles**:
+    - These bundles will automatically be installed in interactive mode, if the user choses to install bundles.
+    - They are installed whenever the `--install-bundles` option is set.
+
+#### Default Recommended Bundles
+
+By default, here's what's included in the Recommended Bundles list:
+
+- [PimcoreApplicationLoggerBundle](../../18_Tools_and_Features/17_Application_Logger.md)
+- [PimcoreCustomReportsBundle](../../18_Tools_and_Features/29_Custom_Reports.md)
+- [PimcoreGlossaryBundle](../../18_Tools_and_Features/21_Glossary.md)
+- PimcoreSeoBundle (for SEO-related topics: [Robots.txt](../../18_Tools_and_Features/38_Robots.txt.md), [Sitemaps](../../18_Tools_and_Features/39_Sitemaps.md) and [Redirects](../../02_MVC/04_Routing_and_URLs/04_Redirects.md))
+- PimcoreSimpleBackendSearchBundle (for default search functionality in Backend UI interface)
+- [PimcoreStaticRoutesBundle](../../02_MVC/04_Routing_and_URLs/02_Custom_Routes.md)
+- [PimcoreQuillBundle](https://github.com/pimcore/quill-bundle/blob/1.x/README.md) (for default WYSIWYG editor)
+- [PimcoreUuidBundle](../../19_Development_Tools_and_Details/19_UUID_Support.md)
+- PimcoreWordExportBundle (for export functionality for translations in Word format)
+- PimcoreXliffBundle (for import/export functionality for translations in Xliff format)
+
+#### Automating Bundle Installation
+
+To install specific bundles automatically, use the `--install-bundles[=bundleList]` flag. This flag installs and
+activates all required bundles and any specified bundles, provided they are part of the recommended bundles list.
+
+**Note**: The bundles will be automatically added to `config/bundles.php`.
 
 ```bash
 ./vendor/bin/pimcore-install --admin-username=admin --admin-password=admin \
@@ -49,24 +81,15 @@ Attention: The bundles will be added to `config/bundles.php` automatically.
 --no-interaction
 ```
 
-Available bundles for installation: 
+#### Modifying Required Bundles and Bundle Recommendations
+The `BundleSetupEvent` is triggered under two circumstances:
 
-- [PimcoreApplicationLoggerBundle](../../18_Tools_and_Features/17_Application_Logger.md)
-- [PimcoreCustomReportsBundle](../../18_Tools_and_Features/29_Custom_Reports.md)
-- [PimcoreGlossaryBundle](../../18_Tools_and_Features/21_Glossary.md)
-- PimcoreSeoBundle (for SEO-related topics: [Robots.txt](../../18_Tools_and_Features/38_Robots.txt.md), [Sitemaps](../../18_Tools_and_Features/39_Sitemaps.md) and [Redirects](../../02_MVC/04_Routing_and_URLs/04_Redirects.md))
-- PimcoreSimpleBackendSearchBundle (for default search functionality in Backend UI interface)
-- [PimcoreStaticRoutesBundle](../../02_MVC/04_Routing_and_URLs/02_Custom_Routes.md)
-- [PimcoreTinymceBundle](https://github.com/pimcore/pimcore/blob/11.x/bundles/TinymceBundle/README.md) (for default WYSIWYG editor)
-- [PimcoreUuidBundle](../../19_Development_Tools_and_Details/19_UUID_Support.md)
-- PimcoreWordExportBundle (for import/export functionality for translations in Word format)
-- PimcoreXliffBundle (for import/export functionality for translations in Xliff format)
+1. To preset the installable (recommended) and automatically installed (required) bundles for the `--install-bundles` option.
+2. To modify a list of recommended bundles in interactive mode. Required bundles are not installed if the user declines to install bundles.
 
-#### Adding or Removing Bundles / Bundle Recommendations
-Before bundles are displayed in the installation process, the `BundleSetupEvent` is fired.
-You can listen or subscribe to this event to add/remove bundles.
-Note that a recommendation will only be added if the bundle is already in the bundles list.
-For more info, you can take a look at the [Pimcore Skeleton](https://github.com/pimcore/skeleton) to see how the [Admin UI Classic Bundle](https://github.com/pimcore/admin-ui-classic-bundle) is installed.
+By subscribing or listening to the `BundleSetupEvent`, you can add or remove bundles from the required or recommended lists.
+
+For practical examples, refer to the [Pimcore Skeleton](https://github.com/pimcore/skeleton). It shows how the [Admin UI Classic Bundle](https://github.com/pimcore/admin-ui-classic-bundle) is integrated.
 
 ```php
 <?php
@@ -91,7 +114,7 @@ class BundleSetupSubscriber implements EventSubscriberInterface
 
     public function bundleSetup(BundleSetupEvent $event): void
     {
-        // add installable bundle and recommend it
+        // make bundle installable (using --install-bundles) and recommend it in interactive installation
         $event->addInstallableBundle('PimcoreAdminBundle', PimcoreAdminBundle::class, true);
 
         // add required bundle
@@ -144,8 +167,8 @@ pimcore_install:
             port:                 "%env(DB_PORT)%"
 ```
 
-## Set a Timezone
-Make sure to set the corresponding timezone in your configuration. 
+## Set a Time Zone
+Make sure to set the corresponding time zone in your configuration. 
 It will be used for displaying date/time values in the admin backend.
 
 ```yaml
@@ -154,6 +177,6 @@ pimcore:
         timezone: Europe/Berlin
 ```
 
-## Office document preview
+## Office Document Preview
 
 The feature for displaying a [preview of documents](../../04_Assets/03_Working_with_Thumbnails/05_Document_Thumbnails.md) directly in Pimcore is optional. To use it, you must install either [Gotenberg](../../23_Installation_and_Upgrade/03_System_Setup_and_Hosting/06_Additional_Tools_Installation.md#gotenberg) or [LibreOffice](../../23_Installation_and_Upgrade/03_System_Setup_and_Hosting/06_Additional_Tools_Installation.md#libreoffice-pdftotext-inkscape-) according to your preference.

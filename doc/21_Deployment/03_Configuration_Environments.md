@@ -13,8 +13,8 @@ or (e.g. in *prod* environments) you can configure everything via real environme
 
 In addition to Symfony configurations, Pimcore also supports environment specific configs for: 
 
-* <https://github.com/pimcore/demo/tree/11.x/config/pimcore> 
-* <https://github.com/pimcore/demo/tree/11.x/var/config>
+* [https://github.com/pimcore/demo/tree/11.x/config/pimcore](https://github.com/pimcore/demo/tree/11.x/config/pimcore) 
+* [https://github.com/pimcore/demo/tree/11.x/var/config](https://github.com/pimcore/demo/tree/11.x/var/config)
 
 
 ## Configuration Storage Locations & Fallbacks
@@ -59,52 +59,74 @@ pimcore:
     config_location:
         image_thumbnails:
             write_target:
-	          type: 'symfony-config'
-              options:
-                directory: '/var/www/html/var/config/image-thumbnails'
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/image-thumbnails'
         video_thumbnails:
             write_target:
-	          type: 'disabled'
+                type: 'disabled'
         document_types:
             write_target:
-	          type: 'disabled'
+                type: 'disabled'
         predefined_properties:
             write_target:
-	          type: 'settings-store'
+                type: 'settings-store'
         predefined_asset_metadata:
             write_target:
-	          type: 'symfony-config'
-              options:
-                directory: '/var/www/html/var/config/predefined_asset_metadata'
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/predefined_asset_metadata'
         perspectives:
             write_target:
-	          type: 'symfony-config'
-              options:
-                directory: '/var/www/html/var/config/perspectives'
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/perspectives'
         custom_views:
             write_target:
-	          type: 'symfony-config'
-              options:
-                directory: '/var/www/html/var/config/custom_views'
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/custom_views'
         object_custom_layouts:
             write_target:
-	          type: 'symfony-config'
-              options:
-                directory: '/var/www/html/var/config/object_custom_layouts'
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/object_custom_layouts'
+        select_options:
+            write_target:
+                type: 'symfony-config'
+                options:
+                    directory: '/var/www/html/var/config/select_options'
+```
+
+and for some specific optional bundles are:
+
+```yaml
+pimcore_custom_reports:
+    config_location:
+        custom_reports:
+            write_target:
+                type: 'symfony-config'
+
+pimcore_static_routes:
+    config_location:
+        staticroutes:
+            write_target:
+                type: 'symfony-config'
+       ...
 ```
 
 #### Production environment with `symfony-config`
 When using `symfony-config` write target, configs are written to Symfony Config files (`yaml`), which are only getting revalidated in debug mode. So if you're
-changing configs in production you won't see any update, because these configs are read only.
+changing configs in production, you won't see any update because these configs are read-only.
 
 If you'd like to allow changes in production, switch to the alternate `settings-store` config storage. 
 You can do so by adding the following to your `symfony-config`. e.g.:
 ```yaml
 pimcore:
     config_location:
-        custom_reports:
+        predefined_properties:
             write_target:
-	          type: 'settings-store'
+                type: 'settings-store'
 ```
 
 #### Revalidate existing configuration on production
@@ -113,3 +135,13 @@ With `settings-store` target, one can update/change configurations in production
 This is not the case with `symfony-config` write target, as configurations are read-only and deployed from different environment. So we need to explicitly revalidate the generated files either through command or custom script. 
 
 For example, to revalidate image or video thumbnails either run command `pimcore:thumbnails:clear` or call `Asset\Image\Thumbnail\Config::clearTempFiles()` after deploying changes on thumbnail configurations.
+
+
+#### Troubleshooting: save button is grayed out
+
+Please note that the saving button would be disabled (grayed out) under the following conditions:
+
+- when `write_target` is intentionally set to `disabled`
+- as specified above about production enviroment, when set to `symfony-config` and not being in debug mode
+- when the `write_target` is `symfony-config` and the `yaml` file does not exist, or it is not writeable (according to file-system permissions)
+- when the `read_target` is set but it does not match with the `write_target`.

@@ -15,19 +15,20 @@
 
 namespace Pimcore\Model\User\UserRole;
 
+use Exception;
 use Pimcore\Model;
 use Pimcore\Model\Element;
 
 /**
  * @internal
  *
- * @property \Pimcore\Model\User\UserRole\Folder $model
+ * @property \Pimcore\Model\User\UserRole $model
  */
 class Dao extends Model\User\AbstractUser\Dao
 {
     /**
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function getById(int $id): void
     {
@@ -40,7 +41,7 @@ class Dao extends Model\User\AbstractUser\Dao
 
     /**
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function getByName(string $name): void
     {

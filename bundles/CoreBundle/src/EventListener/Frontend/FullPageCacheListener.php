@@ -16,6 +16,11 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\EventListener\Frontend;
 
+use DateInterval;
+use DateTime;
+use DateTimeInterface;
+use Exception;
+use Pimcore;
 use Pimcore\Bundle\CoreBundle\EventListener\Traits\PimcoreContextAwareTrait;
 use Pimcore\Bundle\CoreBundle\EventListener\Traits\StaticPageContextAwareTrait;
 use Pimcore\Cache;
@@ -23,6 +28,7 @@ use Pimcore\Cache\FullPage\SessionStatus;
 use Pimcore\Config;
 use Pimcore\Event\Cache\FullPage\CacheResponseEvent;
 use Pimcore\Event\Cache\FullPage\PrepareResponseEvent;
+use Pimcore\Event\Cache\FullPage\PrepareTagsEvent;
 use Pimcore\Event\FullPageCacheEvents;
 use Pimcore\Http\Request\Resolver\PimcoreContextResolver;
 use Pimcore\Logger;
@@ -59,7 +65,7 @@ class FullPageCacheListener
     ) {
     }
 
-    public function disable(string $reason = null): bool
+    public function disable(?string $reason = null): bool
     {
         if ($reason) {
             $this->disableReason = $reason;
@@ -168,7 +174,7 @@ class FullPageCacheListener
                     return;
                 }
 
-                if (\Pimcore::inDebugMode()) {
+                if (Pimcore::inDebugMode()) {
                     $this->disable('Debug flag DISABLE_FULL_PAGE_CACHE is enabled');
 
                     return;
@@ -212,7 +218,7 @@ class FullPageCacheListener
 
                 return;
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::error((string) $e);
 
             $this->disable('ERROR: Exception (see log files in /var/log)');
@@ -321,13 +327,13 @@ class FullPageCacheListener
                     $response->headers->set('Cache-Control', 'public, max-age=' . $this->lifetime, true);
 
                     // add expire header
-                    $date = new \DateTime('now');
-                    $date->add(new \DateInterval('PT' . $this->lifetime . 'S'));
-                    $response->headers->set('Expires', $date->format(\DateTimeInterface::RFC1123), true);
+                    $date = new DateTime('now');
+                    $date->add(new DateInterval('PT' . $this->lifetime . 'S'));
+                    $response->headers->set('Expires', $date->format(DateTimeInterface::RFC1123), true);
                 }
 
-                $now = new \DateTime('now');
-                $response->headers->set('X-Pimcore-Cache-Date', $now->format(\DateTimeInterface::ATOM));
+                $now = new DateTime('now');
+                $response->headers->set('X-Pimcore-Cache-Date', $now->format(DateTimeInterface::ATOM));
 
                 $cacheKey = $this->defaultCacheKey;
                 $deviceDetector = Tool\DeviceDetector::getInstance();
@@ -337,16 +343,16 @@ class FullPageCacheListener
 
                 $event = new PrepareResponseEvent($request, $response);
                 $this->eventDispatcher->dispatch($event, FullPageCacheEvents::PREPARE_RESPONSE);
-
                 $cacheItem = $event->getResponse();
 
-                $tags = ['output'];
-                if ($this->lifetime) {
-                    $tags = ['output_lifetime'];
-                }
+                $event = new PrepareTagsEvent($request, $response);
+                $this->eventDispatcher->dispatch($event, FullPageCacheEvents::PREPARE_TAGS);
+                $tags = $event->getTags();
+
+                $tags[] = $this->lifetime ? 'output_lifetime' : 'output';
 
                 Cache::save($cacheItem, $cacheKey, $tags, $this->lifetime, 1000, true);
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Logger::error((string) $e);
 
                 return;
@@ -362,13 +368,9 @@ class FullPageCacheListener
     {
         $cache = true;
 
-        // do not cache when the application indicated one of the 'no-cache' directives in the response Cache-Control header
-        foreach (['no-cache', 'private', 'no-store'] as $directive) {
-            if ($response->headers->getCacheControlDirective($directive)) {
-                $cache = false;
-
-                break;
-            }
+        // do not cache when the application indicated the 'no-store' directives in the response Cache-Control header
+        if ($response->headers->hasCacheControlDirective('no-store')) {
+            $cache = false;
         }
 
         // do not cache common responses

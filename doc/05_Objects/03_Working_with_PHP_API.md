@@ -149,7 +149,7 @@ $items->setOrderKey("(SELECT id FROM sometable GROUP BY someField)", false);
 
 ### Using prepared statement placeholders and variables
 The syntax is similar to that from the Zend Framework described
-[here](http://framework.zend.com/manual/en/zend.db.adapter.html#zend.db.adapter.select.fetchall).
+[here](https://framework.zend.com/manual/1.12/en/zend.db.adapter.html#zend.db.adapter.select.fetchall).
 
 ```php
 <?php
@@ -378,7 +378,7 @@ public function testAction(Request $request, \Knp\Component\Pager\PaginatorInter
  
     $paginator = $paginator->paginate(
         $list,
-        $request->get('page', 1),
+        $request->query->getInt('page', 1),
         10
     );
 
@@ -445,16 +445,21 @@ It is possible to access and modify the internal query from every object listing
 on `\Doctrine\DBAL\Query\QueryBuilder`.
 ```php
 <?php
-// get all news with ratings that is stored in a not Pimcore related table
- 
-/** @var \Pimcore\Model\DataObject\Listing\Dao|\Pimcore\Model\DataObject\News\Listing $list */
-$list = new Pimcore\Model\DataObject\News\Listing();
- 
-// set  callback
+// This example lists all cars that have been sold.
+
+use Doctrine\DBAL\Query\QueryBuilder;
+use Pimcore\Model\DataObject\Car\Listing;
+
+$list = new Listing();
+
 $list->onCreateQueryBuilder(
-    function (\Doctrine\DBAL\Query\QueryBuilder $queryBuilder) use ($list) {
-        $queryBuilder->join('orderItem', 'objects', 'orderItemObjects',
-                    'orderItemObjects.id = orderItem.product__id');
+    function (QueryBuilder $queryBuilder) {
+        $queryBuilder->join(
+            'object_localized_CAR_en',
+            'object_query_EF_OSOI',
+            'onlineOrderItem',
+            'onlineOrderItem.product__id = object_localized_CAR_en.id'
+        );
     }
 );
 ```
@@ -465,14 +470,16 @@ You can access and print the internal query which is based on `\Doctrine\DBAL\Qu
 
 ```php
 <?php
-// get all news with ratings that is stored in a not Pimcore related table
- 
-/** @var \Pimcore\Model\DataObject\Listing\Dao|\Pimcore\Model\DataObject\News\Listing $list */
-$list = new Pimcore\Model\DataObject\News\Listing();
- 
-// set onCreateQueryBuilder callback
-$list->onCreateQueryBuilder(function (\Doctrine\DBAL\Query\QueryBuilder $queryBuilder) {
-    // echo query
-    echo $queryBuilder->getSQL();
-});
+
+use Doctrine\DBAL\Query\QueryBuilder;
+use Pimcore\Model\DataObject\Car\Listing;
+
+$list = new Listing();
+
+$list->onCreateQueryBuilder(
+    function (QueryBuilder $queryBuilder) {
+        // echo query
+        echo $queryBuilder->getSQL();
+    }
+);
 ```

@@ -43,7 +43,7 @@ class Hotspotimage implements OwnerAwareFieldInterface
      */
     protected ?array $crop = null;
 
-    public function __construct(Asset\Image|int $image = null, array $hotspots = [], array $marker = [], array $crop = [])
+    public function __construct(Asset\Image|int|null $image = null, array $hotspots = [], array $marker = [], array $crop = [])
     {
         if ($image instanceof Asset\Image) {
             $this->image = $image;
@@ -137,7 +137,7 @@ class Hotspotimage implements OwnerAwareFieldInterface
         return $this->image;
     }
 
-    public function getThumbnail(array|string|Asset\Image\Thumbnail\Config $thumbnailName = null, bool $deferred = true): Asset\Image\ThumbnailInterface|string
+    public function getThumbnail(array|string|Asset\Image\Thumbnail\Config|null $thumbnailName = null, bool $deferred = true): Asset\Image\ThumbnailInterface|string
     {
         if (!$this->getImage()) {
             return '';
@@ -148,7 +148,7 @@ class Hotspotimage implements OwnerAwareFieldInterface
             $crop = $this->getCrop();
         }
 
-        $thumbConfig = $this->getImage()->getThumbnailConfig($thumbnailName);
+        $thumbConfig = $this->getImage()->getThumbnail($thumbnailName)->getConfig();
         if (!$thumbConfig && $crop) {
             $thumbConfig = new Asset\Image\Thumbnail\Config();
         }

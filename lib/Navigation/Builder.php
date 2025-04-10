@@ -16,6 +16,9 @@ declare(strict_types=1);
 
 namespace Pimcore\Navigation;
 
+use CallbackFilterIterator;
+use Closure;
+use Exception;
 use Pimcore\Cache as CacheManager;
 use Pimcore\Http\RequestHelper;
 use Pimcore\Logger;
@@ -24,6 +27,7 @@ use Pimcore\Model\Site;
 use Pimcore\Navigation\Iterator\PrefixRecursiveFilterIterator;
 use Pimcore\Navigation\Page\Document as DocumentPage;
 use Pimcore\Navigation\Page\Url;
+use RecursiveIteratorIterator;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 
 class Builder
@@ -32,13 +36,11 @@ class Builder
 
     /**
      * @internal
-     *
      */
     protected ?string $htmlMenuIdPrefix = null;
 
     /**
      * @internal
-     *
      */
     protected string $pageClass = DocumentPage::class;
 
@@ -66,6 +68,7 @@ class Builder
             'root' => null,
             'htmlMenuPrefix' => null,
             'pageCallback' => null,
+            'rootCallback' => null,
             'cache' => true,
             'cacheLifetime' => null,
             'maxDepth' => null,
@@ -75,7 +78,8 @@ class Builder
 
         $options->setAllowedTypes('root', [Document::class, 'null']);
         $options->setAllowedTypes('htmlMenuPrefix', ['string', 'null']);
-        $options->setAllowedTypes('pageCallback', ['callable', 'null']);
+        $options->setAllowedTypes('pageCallback', [Closure::class, 'null']);
+        $options->setAllowedTypes('rootCallback', [Closure::class, 'null']);
         $options->setAllowedTypes('cache', ['string', 'bool']);
         $options->setAllowedTypes('cacheLifetime', ['int', 'null']);
         $options->setAllowedTypes('maxDepth', ['int', 'null']);
@@ -92,7 +96,8 @@ class Builder
      * @param array{
      *     root?: ?Document,
      *     htmlMenuPrefix?: ?string,
-     *     pageCallback?: ?callable,
+     *     pageCallback?: ?\Closure,
+     *     rootCallback?: ?\Closure,
      *     cache?: string|bool,
      *     cacheLifetime?: ?int,
      *     maxDepth?: ?int,
@@ -100,7 +105,7 @@ class Builder
      *     markActiveTrail?: bool
      * } $params
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function getNavigation(array $params): Container
     {
@@ -108,6 +113,7 @@ class Builder
             'root' => $navigationRootDocument,
             'htmlMenuPrefix' => $htmlMenuIdPrefix,
             'pageCallback' => $pageCallback,
+            'rootCallback' => $rootCallback,
             'cache' => $cache,
             'cacheLifetime' => $cacheLifetime,
             'maxDepth' => $maxDepth,
@@ -138,7 +144,7 @@ class Builder
                 $cacheKeys[] = 'custom__' . $cache;
             }
 
-            if ($pageCallback instanceof \Closure) {
+            if ($pageCallback instanceof Closure) {
                 $cacheKeys[] = 'pageCallback_' . closureHash($pageCallback);
             }
 
@@ -160,6 +166,10 @@ class Builder
                 $navigation->addPages($rootPage);
             }
 
+            if ($rootCallback instanceof Closure) {
+                $rootCallback($navigation);
+            }
+
             // we need to force caching here, otherwise the active classes and other settings will be set and later
             // also written into cache (pass-by-reference) ... when serializing the data directly here, we don't have this problem
             if ($cacheEnabled) {
@@ -176,8 +186,6 @@ class Builder
 
     /**
      * @internal
-     *
-     *
      */
     protected function markActiveTrail(Container $navigation, ?Document $activeDocument): void
     {
@@ -226,7 +234,7 @@ class Builder
 
         if ($activeDocument) {
             // we didn't find the active document, so we try to build the trail on our own
-            $allPages = new \RecursiveIteratorIterator($navigation, \RecursiveIteratorIterator::SELF_FIRST);
+            $allPages = new RecursiveIteratorIterator($navigation, RecursiveIteratorIterator::SELF_FIRST);
 
             foreach ($allPages as $page) {
                 if (!$page instanceof Url || !$page->getUri()) {
@@ -257,15 +265,14 @@ class Builder
     protected function findActivePages(Container $navigation, string $property, string $value): array
     {
         $filterByPrefix = new PrefixRecursiveFilterIterator($navigation, $property, $value);
-        $flatten = new \RecursiveIteratorIterator($filterByPrefix, \RecursiveIteratorIterator::SELF_FIRST);
-        $filterMatches = new \CallbackFilterIterator($flatten, static fn (Page $page): bool => $page->get($property) === $value);
+        $flatten = new RecursiveIteratorIterator($filterByPrefix, RecursiveIteratorIterator::SELF_FIRST);
+        $filterMatches = new CallbackFilterIterator($flatten, static fn (Page $page): bool => $page->get($property) === $value);
 
         return iterator_to_array($filterMatches, false);
     }
 
     /**
-     *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
@@ -308,7 +315,6 @@ class Builder
 
     /**
      * Returns the name of the pageclass
-     *
      */
     public function getPageClass(): string
     {
@@ -316,25 +322,27 @@ class Builder
     }
 
     /**
-     *
      * @return Document[]
      */
     protected function getChildren(Document $parentDocument): array
     {
         // the intention of this function is mainly to be overridden in order to customize the behavior of the navigation
         // e.g. for custom filtering and other very specific use-cases
+        if ($parentDocument instanceof Document\Hardlink || $parentDocument instanceof Document\Hardlink\Wrapper\WrapperInterface) {
+            return $parentDocument->getChildren()->getData();
+        }
+
         return $parentDocument->getChildren()->load();
     }
 
     /**
-     *
      * @return Page[]
      *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
-    protected function buildNextLevel(Document $parentDocument, bool $isRoot = false, callable $pageCallback = null, array $parents = [], int $maxDepth = null): array
+    protected function buildNextLevel(Document $parentDocument, bool $isRoot = false, ?callable $pageCallback = null, array $parents = [], ?int $maxDepth = null): array
     {
         $this->currentLevel++;
         $pages = [];
@@ -395,7 +403,7 @@ class Builder
                     $page->setPages($childPages);
                 }
 
-                if ($pageCallback instanceof \Closure) {
+                if ($pageCallback instanceof Closure) {
                     $pageCallback($page, $child);
                 }
 

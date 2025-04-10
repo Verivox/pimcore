@@ -16,6 +16,8 @@
 namespace Pimcore\Model\Dependency;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
+use Exception;
+use Pimcore;
 use Pimcore\Db\Helper;
 use Pimcore\Logger;
 use Pimcore\Messenger\SanityCheckMessage;
@@ -35,7 +37,7 @@ class Dao extends Model\Dao\AbstractDao
      *
      *
      */
-    public function getBySourceId(int $id = null, string $type = null): void
+    public function getBySourceId(?int $id = null, ?string $type = null): void
     {
         if ($id && $type) {
             $this->model->setSourceId($id);
@@ -57,6 +59,122 @@ class Dao extends Model\Dao\AbstractDao
         }
     }
 
+    public function getFilterRequiresByPath(
+        ?int $offset = null,
+        ?int $limit = null,
+        ?string $value = null,
+        ?string $orderBy = null,
+        ?string $orderDirection = null): array
+    {
+
+        $sourceId = (int)$this->model->getSourceId();
+
+        if (in_array($this->model->getSourceType(), ['object', 'document', 'asset'])) {
+            $sourceType = $this->model->getSourceType();
+        } else {
+            throw new SuspiciousOperationException('Illegal source type ' . $this->model->getSourceType());
+        }
+
+        if (!in_array($orderBy, ['id', 'type', 'path'])) {
+            $orderBy = 'id';
+        }
+
+        if (!in_array($orderDirection, ['ASC', 'DESC'])) {
+            $orderDirection = 'ASC';
+        }
+
+        //filterRequiresByPath
+        $query = "
+        SELECT id, type
+        FROM (
+            SELECT d.targetid as id, d.targettype as type
+            FROM dependencies d
+            INNER JOIN objects o ON o.id = d.targetid AND d.targettype= 'object'
+            WHERE d.sourcetype = '" . $sourceType. "' AND d.sourceid = " . $sourceId . " AND LOWER(CONCAT(o.path, o.key)) RLIKE '".$value."'
+            UNION
+            SELECT d.targetid as id, d.targettype as type
+            FROM dependencies d
+            INNER JOIN documents doc ON doc.id = d.targetid AND d.targettype= 'document'
+            WHERE d.sourcetype = '" . $sourceType. "' AND d.sourceid = " . $sourceId . " AND LOWER(CONCAT(doc.path, doc.key)) RLIKE '".$value."'
+            UNION
+            SELECT d.targetid as id, d.targettype as type
+            FROM dependencies d
+            INNER JOIN assets a ON a.id = d.targetid AND d.targettype= 'asset'
+            WHERE d.sourcetype = '" . $sourceType. "' AND d.sourceid = " . $sourceId . " AND LOWER(CONCAT(a.path, a.filename)) RLIKE '".$value."'
+        ) dep
+        ORDER BY " . $orderBy . ' ' . $orderDirection;
+
+        if ($offset !== null && $limit !== null) {
+            $query = sprintf($query . ' LIMIT %d,%d', $offset, $limit);
+        }
+
+        $requiresByPath = $this->db->fetchAllAssociative($query);
+
+        if (count($requiresByPath) > 0) {
+            return $requiresByPath;
+        } else {
+            return [];
+        }
+    }
+
+    public function getFilterRequiredByPath(
+        ?int $offset = null,
+        ?int $limit = null,
+        ?string $value = null,
+        ?string $orderBy = null,
+        ?string $orderDirection = null
+    ): array {
+
+        $targetId = (int)$this->model->getSourceId();
+
+        if (in_array($this->model->getSourceType(), ['object', 'document', 'asset'])) {
+            $targetType = $this->model->getSourceType();
+        } else {
+            throw new SuspiciousOperationException('Illegal source type ' . $this->model->getSourceType());
+        }
+
+        if (!in_array($orderBy, ['id', 'type', 'path'])) {
+            $orderBy = 'id';
+        }
+
+        if (!in_array($orderDirection, ['ASC', 'DESC'])) {
+            $orderDirection = 'ASC';
+        }
+
+        //filterRequiredByPath
+        $query = "
+        SELECT id, type
+        FROM (
+            SELECT d.sourceid as id, d.sourcetype as type
+            FROM dependencies d
+            INNER JOIN objects o ON o.id = d.sourceid AND d.targettype= 'object'
+            WHERE d.targettype = '" . $targetType. "' AND d.targetid = " . $targetId . " AND LOWER(CONCAT(o.path, o.key)) RLIKE '".$value."'
+            UNION
+            SELECT d.sourceid as id, d.sourcetype as type
+            FROM dependencies d
+            INNER JOIN documents doc ON doc.id = d.sourceid AND d.targettype= 'document'
+            WHERE d.targettype = '" . $targetType. "' AND d.targetid = " . $targetId . " AND LOWER(CONCAT(doc.path, doc.key)) RLIKE '".$value."'
+            UNION
+            SELECT d.sourceid as id, d.sourcetype as type
+            FROM dependencies d
+            INNER JOIN assets a ON a.id = d.sourceid AND d.targettype= 'asset'
+            WHERE d.targettype = '" . $targetType. "' AND d.targetid = " . $targetId . " AND LOWER(CONCAT(a.path, a.filename)) RLIKE '".$value."'
+        ) dep
+        ORDER BY " . $orderBy . ' ' . $orderDirection;
+
+        if ($offset !== null && $limit !== null) {
+            $query = sprintf($query . ' LIMIT %d,%d', $offset, $limit);
+        }
+
+        $requiredByPath = $this->db->fetchAllAssociative($query);
+
+        if (count($requiredByPath) > 0) {
+            return $requiredByPath;
+        } else {
+            return [];
+        }
+    }
+
     /**
      * Clear all relations in the database
      *
@@ -71,13 +189,13 @@ class Dao extends Model\Dao\AbstractDao
             //schedule for sanity check
             $data = $this->db->fetchAllAssociative('SELECT `sourceid`, `sourcetype` FROM dependencies WHERE targettype = ? AND targetid = ?', [$type, $id]);
             foreach ($data as $row) {
-                \Pimcore::getContainer()->get('messenger.bus.pimcore-core')->dispatch(
+                Pimcore::getContainer()->get('messenger.bus.pimcore-core')->dispatch(
                     new SanityCheckMessage($row['sourcetype'], $row['sourceid'])
                 );
             }
 
             Helper::selectAndDeleteWhere($this->db, 'dependencies', 'id', Helper::quoteInto($this->db, 'sourceid = ?', $id) . ' AND  ' . Helper::quoteInto($this->db, 'sourcetype = ?', $type));
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::error((string) $e);
         }
     }
@@ -90,7 +208,7 @@ class Dao extends Model\Dao\AbstractDao
     {
         try {
             Helper::selectAndDeleteWhere($this->db, 'dependencies', 'id', Helper::quoteInto($this->db, 'sourceid = ?', $this->model->getSourceId()) . ' AND  ' . Helper::quoteInto($this->db, 'sourcetype = ?', $this->model->getSourceType()));
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::error((string) $e);
         }
     }
@@ -167,7 +285,7 @@ class Dao extends Model\Dao\AbstractDao
      *
      *
      */
-    public function getRequiredBy(int $offset = null, int $limit = null): array
+    public function getRequiredBy(?int $offset = null, ?int $limit = null): array
     {
         $query = '
             SELECT dependencies.sourceid, dependencies.sourcetype FROM dependencies
@@ -196,7 +314,7 @@ class Dao extends Model\Dao\AbstractDao
         return $requiredBy;
     }
 
-    public function getRequiredByWithPath(int $offset = null, int $limit = null, string $orderBy = null, string $orderDirection = null): array
+    public function getRequiredByWithPath(?int $offset = null, ?int $limit = null, ?string $orderBy = null, ?string $orderDirection = null): array
     {
         $targetId = $this->model->getSourceId();
 

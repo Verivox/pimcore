@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Tests\Model\Asset;
 
+use Exception;
 use Pimcore\Model\Asset;
 use Pimcore\Tests\Support\Test\ModelTestCase;
 use Pimcore\Tests\Support\Util\TestHelper;
@@ -94,12 +95,26 @@ class AssetTest extends ModelTestCase
      */
     public function testParentIs0(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
         $savedObject = TestHelper::createImageAsset('', null, false);
-        $this->assertTrue($savedObject->getId() == 0);
+        $this->assertNull($savedObject->getId());
 
         $savedObject->setParentId(0);
+        $savedObject->save();
+    }
+
+    /**
+     * Parent ID of a new object cannot be null
+     */
+    public function testParentIsNull(): void
+    {
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
+        $savedObject = TestHelper::createImageAsset('', null, false);
+        $this->assertNull($savedObject->getId());
+
+        $savedObject->setParentId(null);
         $savedObject->save();
     }
 
@@ -108,7 +123,7 @@ class AssetTest extends ModelTestCase
      */
     public function testParentIdentical(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage("ParentID and ID are identical, an element can't be the parent of itself in the tree.");
         $savedObject = TestHelper::createImageAsset();
         $this->assertTrue($savedObject->getId() > 0);
@@ -124,10 +139,10 @@ class AssetTest extends ModelTestCase
      */
     public function testParentNotFound(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage('ParentID not found.');
         $savedObject = TestHelper::createImageAsset('', null, false);
-        $this->assertTrue($savedObject->getId() == 0);
+        $this->assertEquals(null, $savedObject->getId());
 
         $savedObject->setParentId(999999);
         $savedObject->save();
@@ -212,7 +227,7 @@ class AssetTest extends ModelTestCase
         // clean the thumbnails
         try {
             $stream = $thumbnail->getStream();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $stream = null;
         }
 
@@ -222,7 +237,7 @@ class AssetTest extends ModelTestCase
 
         try {
             $stream1 = $thumbnail->getStream();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $stream1 = null;
         }
 
@@ -300,5 +315,53 @@ class AssetTest extends ModelTestCase
 
         $this->assertMatchesRegularExpression('@^(https?|data):@', $thumbnailFullUrl);
         $this->assertStringContainsString($thumbnail->getPath(), $thumbnailFullUrl);
+    }
+
+    public function testMimeTypeFromStream(): void
+    {
+        $asset = Asset::create(
+            1,
+            [
+                'stream' => fopen(
+                    TestHelper::resolveFilePath('assets/images/image1.jpg'),
+                    'rb'
+                ),
+                'filename' => 'image1_from_stream.jpg',
+            ]
+        );
+
+        $this->assertEquals('image/jpeg', $asset->getMimeType());
+    }
+
+    /**
+     * @throws Exception
+     */
+    public function testMimeTypeFromFile(): void
+    {
+        $asset = TestHelper::createImageAsset(
+            '',
+            null,
+            true,
+            'assets/images/image1.jpg'
+        );
+
+        $this->assertEquals('image/jpeg', $asset->getMimeType());
+    }
+
+    public function testMimeTypeFromContent(): void
+    {
+        $fileName = 'image1_from_content';
+        $assetData = @file_get_contents(
+            TestHelper::resolveFilePath('assets/images/image1.jpg'),
+            false
+        );
+        $data = [
+            'data' => $assetData,
+            'key' => $fileName,
+            'filename' => $fileName,
+        ];
+        $asset = Asset::create(1, $data);
+
+        $this->assertEquals('image/jpeg', $asset->getMimeType());
     }
 }

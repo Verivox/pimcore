@@ -16,10 +16,13 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Element;
 
+use Exception;
+use Pimcore\Cache\RuntimeCache;
 use Pimcore\Event\Model\TagEvent;
 use Pimcore\Event\TagEvents;
 use Pimcore\Event\Traits\RecursionBlockingEventDispatchHelperTrait;
 use Pimcore\Model;
+use Pimcore\Model\Exception\NotFoundException;
 
 /**
  * @method \Pimcore\Model\Element\Tag\Dao getDao()
@@ -35,7 +38,6 @@ final class Tag extends Model\AbstractModel
 
     /**
      * @internal
-     *
      */
     protected string $name;
 
@@ -46,7 +48,6 @@ final class Tag extends Model\AbstractModel
 
     /**
      * @internal
-     *
      */
     protected string $idPath = '';
 
@@ -59,30 +60,30 @@ final class Tag extends Model\AbstractModel
 
     /**
      * @internal
-     *
      */
     protected ?Tag $parent = null;
 
-    /**
-     * @static
-     *
-     *
-     */
     public static function getById(int $id): ?Tag
     {
-        try {
-            $tag = new self();
-            $tag->getDao()->getById($id);
+        $cacheKey = 'tags_' . $id;
 
-            return $tag;
-        } catch (Model\Exception\NotFoundException $e) {
-            return null;
+        try {
+            $tag = RuntimeCache::get($cacheKey);
+        } catch (Exception $ex) {
+            try {
+                $tag = new self();
+                $tag->getDao()->getById($id);
+                RuntimeCache::set($cacheKey, $tag);
+            } catch (NotFoundException $e) {
+                return null;
+            }
         }
+
+        return $tag;
     }
 
     /**
      * returns all assigned tags for element
-     *
      *
      * @return Tag[]
      */
@@ -95,7 +96,6 @@ final class Tag extends Model\AbstractModel
 
     /**
      * adds given tag to element
-     *
      */
     public static function addTagToElement(string $cType, int $cId, Tag $tag): void
     {
@@ -112,7 +112,6 @@ final class Tag extends Model\AbstractModel
 
     /**
      * removes given tag from element
-     *
      */
     public static function removeTagFromElement(string $cType, int $cId, Tag $tag): void
     {
@@ -153,7 +152,6 @@ final class Tag extends Model\AbstractModel
      * @param array  $subtypes          Filter by subtypes, eg. page, object, email, folder etc.
      * @param array $classNames        For objects only: filter by classnames
      * @param bool $considerChildTags Look for elements having one of $tag's children assigned
-     *
      */
     public static function getElementsForTag(
         Tag $tag,
@@ -167,13 +165,12 @@ final class Tag extends Model\AbstractModel
 
     /**
      * @param string $path name path of tags
-     *
      */
     public static function getByPath(string $path): ?Tag
     {
         try {
             return (new self)->getDao()->getByPath($path);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             return null;
         }
     }
@@ -292,7 +289,7 @@ final class Tag extends Model\AbstractModel
      */
     public function getChildren(): array
     {
-        if ($this->children == null) {
+        if ($this->children === null) {
             if ($this->getId()) {
                 $listing = new Tag\Listing();
                 $listing->setCondition('parentId = ?', $this->getId());
@@ -308,7 +305,19 @@ final class Tag extends Model\AbstractModel
 
     public function hasChildren(): bool
     {
-        return count($this->getChildren()) > 0;
+        if ($this->children) {
+            return true;
+        }
+
+        //skip getTotalCount if array is empty
+        if (is_array($this->children)) {
+            return false;
+        }
+
+        $listing = new Tag\Listing();
+        $listing->setCondition('parentId = ?', $this->getId());
+
+        return $listing->getTotalCount() > 0;
     }
 
     public function correctPath(): void
@@ -332,13 +341,20 @@ final class Tag extends Model\AbstractModel
     /**
      * Deletes a tag
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function delete(): void
     {
         $this->dispatchEvent(new TagEvent($this), TagEvents::PRE_DELETE);
 
-        $this->getDao()->delete();
+        $deletedTagIds = $this->getDao()->delete();
+
+        foreach ($deletedTagIds as $removeId) {
+            $cacheKey = 'tags_' . $removeId;
+            if (RuntimeCache::isRegistered($cacheKey)) {
+                RuntimeCache::getInstance()->offsetUnset($cacheKey);
+            }
+        }
 
         $this->dispatchEvent(new TagEvent($this), TagEvents::POST_DELETE);
     }

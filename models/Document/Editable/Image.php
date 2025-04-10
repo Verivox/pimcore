@@ -20,7 +20,6 @@ use Pimcore\Model;
 use Pimcore\Model\Asset;
 use Pimcore\Model\Element;
 use Pimcore\Model\Element\ElementDescriptor;
-use Pimcore\Tool\Serialize;
 
 /**
  * @method \Pimcore\Model\Document\Editable\Dao getDao()
@@ -96,7 +95,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
      *
      * @internal
      */
-    protected ?string $thumbnail = null;
+    protected array|string|null $thumbnail = null;
 
     public function getType(): string
     {
@@ -219,7 +218,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
                 // create a thumbnail first
                 $autoName = false;
 
-                $thumbConfig = $image->getThumbnailConfig($thumbnailName);
+                $thumbConfig = $image->getThumbnail($thumbnailName)->getConfig();
                 if (!$thumbConfig && $this->cropPercent) {
                     $thumbConfig = new Asset\Image\Thumbnail\Config();
                 }
@@ -268,9 +267,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
 
     public function setDataFromResource(mixed $data): static
     {
-        if (strlen($data) > 2) {
-            $data = Serialize::unserialize($data);
-        }
+        $unserializedData = $this->getUnserializedData($data) ?? [];
 
         $rewritePath = function ($data) {
             if (!is_array($data)) {
@@ -291,15 +288,10 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
             return $data;
         };
 
-        if (array_key_exists('marker', $data) && is_array($data['marker']) && count($data['marker']) > 0) {
-            $data['marker'] = $rewritePath($data['marker']);
-        }
+        $unserializedData['marker'] = $rewritePath($unserializedData['marker'] ?? []);
+        $unserializedData['hotspots'] = $rewritePath($unserializedData['hotspots'] ?? []);
 
-        if (array_key_exists('hotspots', $data) && is_array($data['hotspots']) && count($data['hotspots']) > 0) {
-            $data['hotspots'] = $rewritePath($data['hotspots']);
-        }
-
-        $this->setData($data);
+        $this->setData($unserializedData);
 
         return $this;
     }
@@ -352,7 +344,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         $this->cropLeft = $data['cropLeft'] ?? 0;
         $this->marker = $data['marker'] ?? [];
         $this->hotspots = $data['hotspots'] ?? [];
-        $this->thumbnail = (string)($data['thumbnail'] ?? '');
+        $this->thumbnail = $data['thumbnail'] ?? null;
     }
 
     public function getText(): string
@@ -370,7 +362,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->getText();
     }
 
-    public function getThumbnailConfig(): ?string
+    public function getThumbnailConfig(): array|string|null
     {
         return $this->thumbnail;
     }
@@ -394,6 +386,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->image;
     }
 
+    /**
+     * @return $this
+     */
     public function setImage(Asset\Image|ElementDescriptor|null $image): static
     {
         $this->image = $image;
@@ -425,7 +420,7 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
     {
         $image = $this->getImage();
         if ($image instanceof Asset\Image) {
-            $thumbConfig = $image->getThumbnailConfig($conf);
+            $thumbConfig = $image->getThumbnail($conf)->getConfig();
             if ($thumbConfig && $this->cropPercent) {
                 $this->applyCustomCropping($thumbConfig);
                 $thumbConfig->generateAutoName();
@@ -551,6 +546,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $dependencies;
     }
 
+    /**
+     * @return $this
+     */
     public function setCropHeight(float $cropHeight): static
     {
         $this->cropHeight = $cropHeight;
@@ -563,6 +561,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->cropHeight;
     }
 
+    /**
+     * @return $this
+     */
     public function setCropLeft(float $cropLeft): static
     {
         $this->cropLeft = $cropLeft;
@@ -575,6 +576,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->cropLeft;
     }
 
+    /**
+     * @return $this
+     */
     public function setCropPercent(bool $cropPercent): static
     {
         $this->cropPercent = $cropPercent;
@@ -587,6 +591,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->cropPercent;
     }
 
+    /**
+     * @return $this
+     */
     public function setCropTop(float $cropTop): static
     {
         $this->cropTop = $cropTop;
@@ -599,6 +606,9 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->cropTop;
     }
 
+    /**
+     * @return $this
+     */
     public function setCropWidth(float $cropWidth): static
     {
         $this->cropWidth = $cropWidth;
@@ -611,9 +621,14 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->cropWidth;
     }
 
-    public function setHotspots(array $hotspots): void
+    /**
+     * @return $this
+     */
+    public function setHotspots(array $hotspots): static
     {
         $this->hotspots = $hotspots;
+
+        return $this;
     }
 
     public function getHotspots(): array
@@ -621,9 +636,14 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         return $this->hotspots;
     }
 
-    public function setMarker(array $marker): void
+    /**
+     * @return $this
+     */
+    public function setMarker(array $marker): static
     {
         $this->marker = $marker;
+
+        return $this;
     }
 
     public function getMarker(): array
@@ -658,5 +678,21 @@ class Image extends Model\Document\Editable implements IdRewriterInterface, Edit
         }
 
         return $finalVars;
+    }
+
+    /**
+     * @internal
+     *
+     * https://github.com/pimcore/pimcore/issues/15932
+     * used for non-nullable properties stored with null
+     *
+     * @TODO: Remove in Pimcore 12
+     *
+     */
+    public function __unserialize(array $data): void
+    {
+        foreach (get_object_vars($this) as $property => $value) {
+            $this->$property = $data["\0*\0".$property] ?? $value;
+        }
     }
 }

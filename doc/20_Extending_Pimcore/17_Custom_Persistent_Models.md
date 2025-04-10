@@ -12,14 +12,21 @@ Pimcore provides 2 possible ways of working with custom entities namely Doctrine
 
 ## Option 1: Use Doctrine ORM
 Pimcore comes already with the Doctrine bundle, so you can easily create your own entities.
-Please check <https://symfony.com/doc/current/doctrine.html> for more details.
+Please check [https://symfony.com/doc/current/doctrine.html](https://symfony.com/doc/current/doctrine.html) for more details.
+
+Beware that Pimcore uses the default Doctrine connection as well as the default Entity manager.
+For the default connection you are only allowed to use the default entity manager.
+Every other entity manager will through an exception when you use the doctrine schema tool.
+
+If you want to use a different entity manager you also need to use a different connection.
+The connection needs to use a different database otherwise tables will be dropped.
 
 ## Option 2: Working with Pimcore Data Access Objects (Dao)
 
 This example will show you how you can save a custom model in the database.
 
-## Database
-As a first step, create the database structure for the model, for this example I'll use a very easy model called vote. it just
+### Database
+As a first step, create the database structure for the model. For this example I'll use a very easy model called vote. It just
 has an id, a username (just a string) and a score. If you want to write a model for a bundle you have to create the
 table(s) during the installation.
 
@@ -29,7 +36,7 @@ CREATE TABLE `votes` (
   `username` varchar(255) DEFAULT NULL,
   `score` int(5) DEFAULT NULL,
   PRIMARY KEY (`id`)
-) DEFAULT CHARSET=utf8md4
+) DEFAULT CHARSET=utf8mb4
 ```
 
 Please keep in mind that this is just a generic example, you also could create other and more complex models.
@@ -115,7 +122,7 @@ to use the DAO. If the class doesn't exist, it just continue searching using the
 Small example: `App\Model\Vote` looks for `App\Model\Vote\Dao`, `App\Model\Dao`, `App\Dao`.
 
 
-## DAO
+### DAO
 Now we are ready to implement the Dao:
 
 ```php
@@ -134,7 +141,7 @@ class Dao extends AbstractDao
     /**
      * get vote by id
      *
-     * @throws \Exception
+     * @throws NotFoundException
      */
     public function getById(?int $id = null): void
     {
@@ -144,7 +151,7 @@ class Dao extends AbstractDao
 
         $data = $this->db->fetchAssociative('SELECT * FROM '.$this->tableName.' WHERE id = ?', [$this->model->getId()]);
 
-        if(!$data) {
+        if (!$data) {
             throw new NotFoundException("Object with the ID " . $this->model->getId() . " doesn't exists");
         }
 
@@ -208,7 +215,7 @@ Please keep in mind that this is just a very easy example DAO. Of course, you ca
 save dependencies or whatever you want.
 
 
-## Using the Model
+### Using the Model
 
 Now you can use your Model in your service-layer.
 
@@ -220,7 +227,7 @@ $vote->save();
 ```
 
 
-## Listing
+### Listing
 If you need to query the data using a Pimcore entity list, you also need to implement a `Listing` and `Listing\Dao` class:
 
 ```php
@@ -342,7 +349,7 @@ class Listing extends Model\Listing\AbstractListing implements PaginateListingIn
 ```
 
 
-## Listing\Dao
+### Listing\Dao
 
 ```php
 #src/Model/Vote/Listing/Dao.php
@@ -376,7 +383,7 @@ class Dao extends Listing\Dao\AbstractDao
     {
         $queryBuilder = $this->db->createQueryBuilder();
         $field = $this->getTableName().'.id';
-        $queryBuilder->select([sprintf('SQL_CALC_FOUND_ROWS %s as id', $field)]);
+        $queryBuilder->select(sprintf('SQL_CALC_FOUND_ROWS %s as id', $field));
         $queryBuilder->from($this->getTableName());
 
         $this->applyListingParametersToQueryBuilder($queryBuilder);
@@ -394,7 +401,7 @@ class Dao extends Listing\Dao\AbstractDao
         // load id's
         $list = $this->loadIdList();
 
-        $objects = array();
+        $objects = [];
         foreach ($list as $id) {
             if ($object = Model\Vote::getById($id)) {
                 $objects[] = $object;
@@ -415,7 +422,7 @@ class Dao extends Listing\Dao\AbstractDao
     public function loadIdList(): array
     {
         $query = $this->getQueryBuilder();
-        $objectIds = $this->db->fetchFirstColumn((string) $query, $this->model->getConditionVariables(), $this->model->getConditionVariableTypes());
+        $objectIds = $this->db->fetchFirstColumn($query->getSQL(), $query->getParameters(), $query->getParameterTypes());
         $this->totalCount = (int) $this->db->fetchOne('SELECT FOUND_ROWS()');
 
         return array_map('intval', $objectIds);
@@ -446,20 +453,22 @@ class Dao extends Listing\Dao\AbstractDao
     {
         $queryBuilder = $this->getQueryBuilder();
         $this->prepareQueryBuilderForTotalCount($queryBuilder, $this->getTableName() . '.id');
-
-        $totalCount = $this->db->fetchOne((string) $queryBuilder, $this->model->getConditionVariables(), $this->model->getConditionVariableTypes());
-
-        return (int) $totalCount;
+        
+        if ($this->isQueryBuilderPartInUse($queryBuilder, 'groupBy') || $this->isQueryBuilderPartInUse($queryBuilder, 'having')) {
+            return (int)$this->db->fetchOne('SELECT COUNT(*)  FROM (' . $queryBuilder->getSQL() . ') as XYZ');
+        } else {
+            return (int)$this->db->fetchOne($queryBuilder->getSql(), $queryBuilder->getParameters(), $queryBuilder->getParameterTypes());
+        }
     }
 }
 ```
 
 
-## Using the Listing
+### Using the Listing
 Now you can use your Listing in your service-layer.
 
 ```php
 $list = \App\Model\Vote::getList();
-$list->setCondition("score > ?", array(1));
+$list->setCondition("score > ?", [1]);
 $votes = $list->load();
 ```

@@ -16,6 +16,8 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Document\Editable;
 
+use DOMElement;
+use Pimcore;
 use Pimcore\Model;
 use Pimcore\Tool\DomCrawler;
 use Pimcore\Tool\Text;
@@ -37,7 +39,7 @@ class Wysiwyg extends Model\Document\Editable implements IdRewriterInterface, Ed
 
     private static function getWysiwygSanitizer(): HtmlSanitizer
     {
-        return self::$pimcoreWysiwygSanitizer ??= \Pimcore::getContainer()->get(Text::PIMCORE_WYSIWYG_SANITIZER_ID);
+        return self::$pimcoreWysiwygSanitizer ??= Pimcore::getContainer()->get(Text::PIMCORE_WYSIWYG_SANITIZER_ID);
     }
 
     public function getType(): string
@@ -77,16 +79,14 @@ class Wysiwyg extends Model\Document\Editable implements IdRewriterInterface, Ed
 
     public function setDataFromResource(mixed $data): static
     {
-        $helper = self::getWysiwygSanitizer();
-        $this->text = $helper->sanitize(html_entity_decode($data));
+        $this->text = $data;
 
         return $this;
     }
 
     public function setDataFromEditmode(mixed $data): static
     {
-        $helper = self::getWysiwygSanitizer();
-        $this->text = $helper->sanitize(html_entity_decode($data));
+        $this->text = $data;
 
         return $this;
     }
@@ -112,7 +112,7 @@ class Wysiwyg extends Model\Document\Editable implements IdRewriterInterface, Ed
 
         $elements = $html->filter('a[pimcore_id], img[pimcore_id]');
 
-        /** @var \DOMElement $el */
+        /** @var DOMElement $el */
         foreach ($elements as $el) {
             if ($el->hasAttribute('href') || $el->hasAttribute('src')) {
                 $type = $el->getAttribute('pimcore_type');
@@ -128,5 +128,14 @@ class Wysiwyg extends Model\Document\Editable implements IdRewriterInterface, Ed
 
         $html->clear();
         unset($html);
+    }
+
+    public function save(): void
+    {
+        if (is_string($this->text)) {
+            $helper = self::getWysiwygSanitizer();
+            $this->text = $helper->sanitizeFor('body', $this->text);
+        }
+        $this->getDao()->save();
     }
 }

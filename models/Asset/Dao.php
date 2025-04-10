@@ -15,6 +15,8 @@
 
 namespace Pimcore\Model\Asset;
 
+use Exception;
+use Pimcore;
 use Pimcore\Db\Helper;
 use Pimcore\Loader\ImplementationLoader\Exception\UnsupportedException;
 use Pimcore\Logger;
@@ -41,7 +43,6 @@ class Dao extends Model\Element\Dao
     /**
      * Get the data for the object by id from database and assign it to the object (model)
      *
-     *
      * @throws Model\Exception\NotFoundException
      */
     public function getById(int $id): void
@@ -50,14 +51,15 @@ class Dao extends Model\Element\Dao
             LEFT JOIN tree_locks ON assets.id = tree_locks.id AND tree_locks.type = 'asset'
                 WHERE assets.id = ?", [$id]);
 
-        if (!empty($data['id'])) {
+        if ($data) {
+            $data['hasMetaData'] = (bool)$data['hasMetaData'];
             $this->assignVariablesToModel($data);
 
             if ($data['hasMetaData']) {
                 $metadataRaw = $this->db->fetchAllAssociative('SELECT * FROM assets_metadata WHERE cid = ?', [$data['id']]);
                 $metadata = [];
                 foreach ($metadataRaw as $md) {
-                    $loader = \Pimcore::getContainer()->get('pimcore.implementation_loader.asset.metadata.data');
+                    $loader = Pimcore::getContainer()->get('pimcore.implementation_loader.asset.metadata.data');
 
                     $transformedData = $md['data'];
 
@@ -84,15 +86,14 @@ class Dao extends Model\Element\Dao
     /**
      * Get the data for the asset from database for the given path
      *
-     *
      * @throws Model\Exception\NotFoundException
      */
     public function getByPath(string $path): void
     {
         $params = $this->extractKeyAndPath($path);
-        $data = $this->db->fetchAssociative('SELECT id FROM assets WHERE `path` = :path AND `filename` = :key', $params);
+        $data = $this->db->fetchAssociative('SELECT id FROM assets WHERE `path` = BINARY :path AND `filename` = BINARY :key', $params);
 
-        if (!empty($data['id'])) {
+        if ($data) {
             $this->assignVariablesToModel($data);
         } else {
             throw new Model\Exception\NotFoundException('asset with path: ' . $path . " doesn't exist");
@@ -117,7 +118,7 @@ class Dao extends Model\Element\Dao
         foreach ($asset as $key => $value) {
             if (in_array($key, $this->getValidTableColumns('assets'))) {
                 if (is_array($value)) {
-                    $value = Serialize::serialize($value);
+                    $value = Serialize::toJson($value);
                 }
                 $data[$key] = $value;
             }
@@ -134,30 +135,28 @@ class Dao extends Model\Element\Dao
 
         $data['hasMetaData'] = 0;
         $metadataItems = [];
-        if (!empty($metadata)) {
-            foreach ($metadata as $metadataItem) {
-                $metadataItem['cid'] = $this->model->getId();
-                unset($metadataItem['config']);
+        foreach ($metadata as $metadataItem) {
+            $metadataItem['cid'] = $this->model->getId();
+            unset($metadataItem['config']);
 
-                $loader = \Pimcore::getContainer()->get('pimcore.implementation_loader.asset.metadata.data');
+            $loader = Pimcore::getContainer()->get('pimcore.implementation_loader.asset.metadata.data');
 
-                $dataForResource = $metadataItem['data'];
+            $dataForResource = $metadataItem['data'];
 
-                try {
-                    /** @var Data $instance */
-                    $instance = $loader->build($metadataItem['type']);
-                    $dataForResource = $instance->getDataForResource($metadataItem['data'], $metadataItem);
-                } catch (UnsupportedException $e) {
-                }
+            try {
+                /** @var Data $instance */
+                $instance = $loader->build($metadataItem['type']);
+                $dataForResource = $instance->getDataForResource($metadataItem['data'], $metadataItem);
+            } catch (UnsupportedException $e) {
+            }
 
-                $metadataItem['data'] = $dataForResource;
+            $metadataItem['data'] = $dataForResource;
 
-                $metadataItem['language'] = (string) $metadataItem['language']; // language column cannot be NULL -> see SQL schema
+            $metadataItem['language'] = (string) $metadataItem['language']; // language column cannot be NULL -> see SQL schema
 
-                if (is_scalar($metadataItem['data'])) {
-                    $data['hasMetaData'] = 1;
-                    $metadataItems[] = $metadataItem;
-                }
+            if (is_scalar($metadataItem['data'])) {
+                $data['hasMetaData'] = 1;
+                $metadataItems[] = $metadataItem;
             }
         }
 
@@ -194,8 +193,6 @@ class Dao extends Model\Element\Dao
     }
 
     /**
-     *
-     *
      * @internal
      */
     public function updateChildPaths(string $oldPath): array
@@ -224,7 +221,7 @@ class Dao extends Model\Element\Dao
     /**
      * Get the properties for the object from database and assign it
      *
-     *
+     * @throws Exception
      */
     public function getProperties(bool $onlyInherited = false): array
     {
@@ -232,7 +229,13 @@ class Dao extends Model\Element\Dao
 
         // collect properties via parent - ids
         $parentIds = $this->getParentIds();
-        $propertiesRaw = $this->db->fetchAllAssociative('SELECT * FROM properties WHERE ((cid IN (' . implode(',', $parentIds) . ") AND inheritable = 1) OR cid = ? )  AND ctype='asset'", [$this->model->getId()]);
+        $propertiesRaw = $this->db->fetchAllAssociative(
+            'SELECT * FROM properties WHERE
+                             (
+                                 (cid IN (' . implode(',', $parentIds) . ") AND inheritable = 1) OR cid = ? )
+                                 AND ctype='asset'",
+            [$this->model->getId()]
+        );
 
         // because this should be faster than mysql
         usort($propertiesRaw, function ($left, $right) {
@@ -241,9 +244,12 @@ class Dao extends Model\Element\Dao
 
         foreach ($propertiesRaw as $propertyRaw) {
             try {
+                $id = $this->model->getId();
                 $property = new Model\Property();
                 $property->setType($propertyRaw['type']);
-                $property->setCid($this->model->getId());
+                if ($id !== null) {
+                    $property->setCid($id);
+                }
                 $property->setName($propertyRaw['name']);
                 $property->setCtype('asset');
                 $property->setDataFromResource($propertyRaw['data']);
@@ -261,17 +267,12 @@ class Dao extends Model\Element\Dao
                 }
 
                 $properties[$propertyRaw['name']] = $property;
-            } catch (\Exception $e) {
-                Logger::error("can't add property " . $propertyRaw['name'] . ' to asset ' . $this->model->getRealFullPath());
+            } catch (Exception) {
+                Logger::error(
+                    "can't add property " . $propertyRaw['name'] . ' to asset ' . $this->model->getRealFullPath()
+                );
             }
         }
-
-        // if only inherited then only return it and dont call the setter in the model
-        if ($onlyInherited) {
-            return $properties;
-        }
-
-        $this->model->setProperties($properties);
 
         return $properties;
     }
@@ -293,7 +294,7 @@ class Dao extends Model\Element\Dao
 
         try {
             $path = $this->db->fetchOne('SELECT CONCAT(`path`,filename) as `path` FROM assets WHERE id = ?', [$this->model->getId()]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::error('could not get  current asset path from DB');
         }
 
@@ -318,11 +319,8 @@ class Dao extends Model\Element\Dao
 
     /**
      * quick test if there are children
-     *
-     * @param Model\User|null $user
-     *
      */
-    public function hasChildren(User $user = null): bool
+    public function hasChildren(?User $user = null): bool
     {
         if (!$this->model->getId()) {
             return false;
@@ -352,7 +350,6 @@ class Dao extends Model\Element\Dao
 
     /**
      * Quick test if there are siblings
-     *
      */
     public function hasSiblings(): bool
     {
@@ -377,11 +374,8 @@ class Dao extends Model\Element\Dao
 
     /**
      * returns the amount of directly children (not recursivly)
-     *
-     * @param Model\User|null $user
-     *
      */
-    public function getChildAmount(User $user = null): int
+    public function getChildAmount(?User $user = null): int
     {
         if (!$this->model->getId()) {
             return 0;
@@ -434,8 +428,6 @@ class Dao extends Model\Element\Dao
     }
 
     /**
-     *
-     *
      * @throws \Doctrine\DBAL\Exception
      */
     public function isInheritingPermission(string $type, array $userIds): int
@@ -470,7 +462,7 @@ class Dao extends Model\Element\Dao
             }
 
             // exception for list permission
-            if (empty($permissionsParent) && $type == 'list') {
+            if ($type == 'list') {
                 // check for children with permissions
                 $path = $this->model->getRealFullPath() . '/';
                 if ($this->model->getId() == 1) {
@@ -482,7 +474,7 @@ class Dao extends Model\Element\Dao
                     return true;
                 }
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::warn('Unable to get permission ' . $type . ' for asset ' . $this->model->getId());
         }
 
@@ -501,8 +493,13 @@ class Dao extends Model\Element\Dao
 
     public function updateCustomSettings(): void
     {
-        $customSettingsData = Serialize::serialize($this->model->getCustomSettings());
+        $customSettingsData = Serialize::toJson($this->model->getCustomSettings());
         $this->db->update('assets', ['customSettings' => $customSettingsData], ['id' => $this->model->getId()]);
+    }
+
+    public function getCustomSettings(): ?string
+    {
+        return $this->db->fetchOne('SELECT customSettings FROM assets WHERE id = :id', ['id' => $this->model->getId()]);
     }
 
     public function __isBasedOnLatestData(): bool

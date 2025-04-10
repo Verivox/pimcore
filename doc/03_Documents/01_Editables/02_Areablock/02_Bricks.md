@@ -89,10 +89,10 @@ The template location defines the base path which will be used to find your temp
 locations. `<bundlePath>` is the filesystem path of the bundle the brick resides in, `<brickId>` the ID of the brick 
 as registered on the areabrick manager (see below).
 
-| Location | Path                                                                                                                                                                                       |
-|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| global   | `templates/areas/<brickId>/`                                                                                                                                                               |
-| bundle   | `<bundlePath>/Resources/views/areas/<brickId>/` for legacy (Symfony <= 4) bundle structure<br/>or<br/>`<bundlePath>/templates/areas/<brickId>/` for modern (Symfony >= 5) bundle structure |
+| Location | Path                                                                                                                                                                                        |
+|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| global   | `templates/areas/<brickId>/`                                                                                                                                                                |
+| bundle   | `<bundlePath>/Resources/views/areas/<brickId>/` for legacy (Symfony \<= 4) bundle structure<br/>or<br/>`<bundlePath>/templates/areas/<brickId>/` for modern (Symfony >= 5) bundle structure |
 
 Depending on the template location, the following files will be used. You can always completely control locations by 
 implementing the methods for templates and icon yourself (see `AreabrickInterface`):
@@ -172,35 +172,35 @@ brick metadata.
 ```twig
 /* templates/areas/iframe/view.html.twig */
 
-{% set urlField = pimcore_input('iframe_url') %}
-{% set widthField = pimcore_numeric('iframe_width') %}
-{% set heightField = pimcore_numeric('iframe_height') %}
-{% set transparentField = pimcore_checkbox('iframe_transparent') %}
+{% set urlField = pimcore_input("iframe_url") %}
+{% set widthField = pimcore_numeric("iframe_width") %}
+{% set heightField = pimcore_numeric("iframe_height") %}
+{% set transparentField = pimcore_checkbox("iframe_transparent") %}
 
 {% if editmode %}
     <div>
         <h2>IFrame</h2>
         <div>
-            URL: {{ urlField }}
+            URL: {{ urlField|raw }}
         </div>
         <br/>
         <b>Advanced Configuration</b>
         <div>
-            Width: {{ widthField }}px (default: 100%)
+            Width: {{ widthField|raw }}px (default: 100%)
         </div>
         <div>
-            Height: {{ heightField }}px (default: 400px)
+            Height: {{ heightField|raw }}px (default: 400px)
         </div>
         <div>
-            Transparent: {{ transparentField }} (default: false)
+            Transparent: {{ transparentField|raw }} (default: false)
         </div>
     </div>
 {% else %}
     {% if not urlField.isEmpty() %}
         
-        {% set transparent = 'false' %}
-        {% set width = '100%' %}
-        {% set height = '400' %}
+        {% set transparent = "false" %}
+        {% set width = "100%" %}
+        {% set height = "400" %}
 
         {% if not widthField.isEmpty() %}
             {% set width = widthField.data %}    
@@ -211,7 +211,7 @@ brick metadata.
         {% endif %}
 
         {% if transparentField.isChecked() %}
-            {% set transparent = 'true' %}    
+            {% set transparent = "true" %}    
         {% endif %}
 
         <iframe src="{{ urlField }}" width="{{ width }}" height="{{ height }}" allowtransparency="{{ transparent }}" frameborder="0"></iframe>
@@ -254,6 +254,18 @@ structured layout in the context of the current brick.
 The editing interface is configured by implementing the `EditableDialogBoxInterface` on your brick class and by providing 
 a simple config array.
 
+> This config array can either contain the editables themselves, or an array of the format (not recommended):
+> 
+> ````php
+> [
+>   'type' => 'input',   // The type of the editable
+>   'name' => 'myInput',   // The name of the editable
+>   'config' => [],   // An optional array of the documented configurations (see the respective editables)
+>   'label' => 'My Input Label',   // An optional label
+>   'description' => 'Additional Description',   // An optional description
+> ]
+> ````
+
 ### Simple Example Config
 ```php
 <?php
@@ -263,6 +275,7 @@ namespace App\Document\Areabrick;
 use Pimcore\Extension\Document\Areabrick\EditableDialogBoxConfiguration;
 use Pimcore\Extension\Document\Areabrick\EditableDialogBoxInterface;
 use Pimcore\Model\Document;
+use Pimcore\Model\Document\Editable;
 use Pimcore\Model\Document\Editable\Area\Info;
 
 class WysiwygWithImages extends AbstractAreabrick implements EditableDialogBoxInterface
@@ -277,24 +290,22 @@ class WysiwygWithImages extends AbstractAreabrick implements EditableDialogBoxIn
         $config = new EditableDialogBoxConfiguration();
         $config->setWidth(600);
         //$config->setReloadOnClose(true);
+        
         $config->setItems([
             [
-                'type' => 'input',
-                'label' => 'Some additional Text', // labels are optional
-                'name' => 'myDialogInput'
-            ],
-            [
-                'type' => 'checkbox',
-                'name' => 'myDialogCheckbox',
-                'label' => 'This is the checkbox label',
-                'description' => 'This is a description for myDialogCheckbox' // descriptions are optional
-            ],
-            [
-                'type' => 'date',
-                'name' => 'myDialogDate'
+                (new Editable\Input())
+                    ->setName('myDialogInput')
+                    ->setLabel('Some additional Text'), // labels are optional
+                    
+                (new Editable\Checkbox())
+                    ->setName('myDialogCheckbox')
+                    ->setLabel('This is the checkbox label')
+                    ->setDialogDescription('This is a description for myDialogCheckbox'),  // descriptions are optional
+                    
+                (new Editable\Date())
+                    ->setName('myDialogDate')
             ]
         ]);
-
 
         return $config;
     }
@@ -310,7 +321,7 @@ namespace App\Document\Areabrick;
 
 use Pimcore\Extension\Document\Areabrick\EditableDialogBoxConfiguration;
 use Pimcore\Extension\Document\Areabrick\EditableDialogBoxInterface;
-use Pimcore\Model\Document;
+use Pimcore\Model\Document\Editable;
 use Pimcore\Model\Document\Editable\Area\Info;
 
 class WysiwygWithImages extends AbstractAreabrick implements EditableDialogBoxInterface
@@ -320,10 +331,11 @@ class WysiwygWithImages extends AbstractAreabrick implements EditableDialogBoxIn
         return 'WYSIWYG w. Images';
     }
 
-    public function getEditableDialogBoxConfiguration(Document\Editable $area, ?Info $info): EditableDialogBoxConfiguration
+    public function getEditableDialogBoxConfiguration(Editable $area, ?Info $info): EditableDialogBoxConfiguration
     {
         $config = new EditableDialogBoxConfiguration();
         $config->setWidth(600);
+        
         $config->setItems([
             'type' => 'tabpanel',
             'items' => [
@@ -331,116 +343,93 @@ class WysiwygWithImages extends AbstractAreabrick implements EditableDialogBoxIn
                     'type' => 'panel',
                     'title' => 'Tab 1',
                     'items' => [
-                        [
-                            'type' => 'wysiwyg',
-                            'label' => 'Some additional Text',
-                            'name' => 'myDialogWysiwyg'
-                        ],
-                        [
-                            'type' => 'video',
-                            'name' => 'myDialogVideo'
-                        ],
-                        [
-                            'type' => 'textarea',
-                            'name' => 'myDialogTextarea'
-                        ],
-                        [
-                            'type' => 'table',
-                            'name' => 'myDialogTable'
-                        ],
-                        [
-                            'type' => 'snippet',
-                            'name' => 'myDialogSnippet'
-                        ],
-                        [
-                            'type' => 'select',
-                            'name' => 'myDialogSelect',
-                            'config' => [
+                        (new Editable\Wysiwyg())
+                            ->setName('myDialogWysiwyg')
+                            ->setLabel('Some additional Text'),
+                            
+                        (new Editable\Video())
+                            ->setName('myDialogVideo'),
+                            
+                        (new Editable\Textarea())
+                            ->setName('myDialogTextarea'),
+                            
+                        (new Editable\Table())
+                            ->setName('myDialogTable'),
+                            
+                        (new Editable\Snippet())
+                            ->setName('myDialogSnippet'),
+                            
+                        (new Editable\Select())
+                            ->setName('myDialogSelect')
+                            ->setConfig([
                                 'store' => [
                                     ['foo', 'Foo'],
                                     ['bar', 'Bar'],
                                     ['baz', 'Baz'],
                                 ]
-                            ]
-                        ],
-                        [
-                            'type' => 'numeric',
-                            'name' => 'myDialogNumber'
-                        ],
-                        [
-                            'type' => 'multiselect',
-                            'name' => 'myDialogMultiSelect',
-                            'config' => [
+                            ]),
+                            
+                        (new Editable\Numeric())
+                            ->setName('myDialogNumber'),
+                            
+                        (new Editable\Multiselect())
+                            ->setName('myDialogMultiSelect')
+                            ->setConfig([
                                 'store' => [
                                     ['foo', 'Foo'],
                                     ['bar', 'Bar'],
                                     ['baz', 'Baz'],
                                 ]
-                            ]
-                        ],
-                        [
-                            'type' => 'checkbox',
-                            'name' => 'myDialogCheckbox',
-                            'label' => 'This is the checkbox label 😸',
-                        ],
-                        [
-                            'type' => 'input',
-                            'name' => 'myDialogInput'
-                        ]
+                            ]),
+                        
+                        (new Editable\Checkbox())
+                            ->setName('myDialogCheckbox')
+                            ->setLabel('This is the checkbox label 😸'),
+                        
+                        (new Editable\Input())
+                            ->setName('myDialogInput'),
                     ]
                 ],
                 [
                     'type' => 'panel',
                     'title' => 'Tab 2',
                     'items' => [
-                        [
-                            'type' => 'input',
-                            'name' => 'myNumber3'
-                        ],
-                        [
-                            'type' => 'link',
-                            'name' => 'myDialogLink'
-                        ],
-                        [
-                            'type' => 'image',
-                            'name' => 'myDialogImage'
-                        ],
-                        [
-                            'type' => 'embed',
-                            'name' => 'myDialogEmbed'
-                        ],
-                        [
-                            'type' => 'date',
-                            'name' => 'myDialogDate'
-                        ]
+                        (new Editable\Input())
+                            ->setName('anotherInput'),
+                        
+                        (new Editable\Link())
+                            ->setName('myDialogLink'),
+                        
+                        (new Editable\Image())
+                            ->setName('myDialogImage'),
+                        
+                        (new Editable\Embed())
+                            ->setName('myEmbed'),
+                        
+                        (new Editable\Date())
+                            ->setName('myDialogDate'),
                     ]
                 ],
                 [
                     'type' => 'panel',
                     'title' => 'Tab 3',
                     'items' => [
-                        [
-                            'type' => 'renderlet',
-                            'name' => 'myDialogRenderlet'
-                        ],
-                        [
-                            'type' => 'relations',
-                            'name' => 'myDialogRelations'
-                        ],
-                        [
-                            'label' => 'Just a single relation 😹',
-                            'type' => 'relation',
-                            'name' => 'myDialogRelation'
-                        ],
-                        [
-                            'type' => 'pdf',
-                            'name' => 'myDialogPdf'
-                        ]
+                        (new Editable\Renderlet())
+                            ->setName('myDialogRenderlet'),
+                            
+                        (new Editable\Relations())
+                            ->setName('myDialogRelations'),
+                            
+                        (new Editable\Relation())
+                            ->setName('myDialogRelation')
+                            ->setLabel('Just a single relation 😹'),
+                            
+                        (new Editable\Pdf())
+                            ->setName('myDialogPdf'),
                     ]
                 ]
             ]
         ]);
-
 
         return $config;
     }

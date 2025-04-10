@@ -16,6 +16,10 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Asset;
 
+use Exception;
+use Imagick;
+use Pimcore;
+use Pimcore\Config;
 use Pimcore\Event\FrontendEvents;
 use Pimcore\File;
 use Pimcore\Model;
@@ -52,17 +56,17 @@ class Image extends Model\Asset
 
     private function isLowQualityPreviewEnabled(): bool
     {
-        return \Pimcore::getContainer()->getParameter('pimcore.config')['assets']['image']['low_quality_image_preview']['enabled'];
+        return Config::getSystemConfiguration('assets')['image']['low_quality_image_preview']['enabled'];
     }
 
     /**
      *
      *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
-    public function generateLowQualityPreview(string $generator = null): bool|string
+    public function generateLowQualityPreview(): false|string
     {
         if (!$this->isLowQualityPreviewEnabled()) {
             return false;
@@ -77,7 +81,7 @@ class Image extends Model\Asset
                 return false;
             }
 
-            $imagick = new \Imagick($path);
+            $imagick = new Imagick($path);
             $imagick->setImageFormat('jpg');
             $imagick->setOption('jpeg:extent', '1kb');
             $width = $imagick->getImageWidth();
@@ -118,7 +122,7 @@ EOT;
 
         if (Tool::isFrontend()) {
             $path = urlencode_ignore_slash($storagePath);
-            $prefix = \Pimcore::getContainer()->getParameter('pimcore.config')['assets']['frontend_prefixes']['thumbnail'];
+            $prefix = Config::getSystemConfiguration('assets')['frontend_prefixes']['thumbnail'];
             $path = $prefix . $path;
         }
 
@@ -126,7 +130,7 @@ EOT;
             'storagePath' => $storagePath,
             'frontendPath' => $path,
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, FrontendEvents::ASSET_IMAGE_THUMBNAIL);
+        Pimcore::getEventDispatcher()->dispatch($event, FrontendEvents::ASSET_IMAGE_THUMBNAIL);
         $path = $event->getArgument('frontendPath');
 
         return $path;
@@ -150,24 +154,11 @@ EOT;
 
         try {
             $dataUri = 'data:image/svg+xml;base64,' . base64_encode(Storage::get('thumbnail')->read($this->getLowQualityPreviewStoragePath()));
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $dataUri = null;
         }
 
         return $dataUri;
-    }
-
-    /**
-     * Legacy method for backwards compatibility. Use getThumbnail($config)->getConfig() instead.
-     *
-     * @internal
-     *
-     */
-    public function getThumbnailConfig(array|string|Image\Thumbnail\Config|null $config): ?Image\Thumbnail\Config
-    {
-        $thumbnail = $this->getThumbnail($config);
-
-        return $thumbnail->getConfig();
     }
 
     /**
@@ -181,19 +172,19 @@ EOT;
     /**
      * @internal
      *
-     * @throws \Exception
+     * @throws Exception
      *
      */
     public static function getImageTransformInstance(): ?\Pimcore\Image\Adapter
     {
         try {
             $image = \Pimcore\Image::getInstance();
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             $image = null;
         }
 
         if (!$image instanceof \Pimcore\Image\Adapter) {
-            throw new \Exception("Couldn't get instance of image tranform processor.");
+            throw new Exception("Couldn't get instance of image tranform processor.");
         }
 
         return $image;
@@ -213,9 +204,9 @@ EOT;
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
-    public function getDimensions(string $path = null, bool $force = false): ?array
+    public function getDimensions(?string $path = null, bool $force = false): ?array
     {
         if (!$force) {
             $width = $this->getCustomSetting('imageWidth');
@@ -241,7 +232,7 @@ EOT;
 
         //try to get the dimensions with getimagesize because it is much faster than e.g. the Imagick-Adapter
         if (is_readable($path)) {
-            $imageSize = getimagesize($path);
+            $imageSize = @getimagesize($path);
             if ($imageSize && $imageSize[0] && $imageSize[1]) {
                 $dimensions = [
                     'width' => $imageSize[0],

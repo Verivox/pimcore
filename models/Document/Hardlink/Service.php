@@ -16,18 +16,15 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Document\Hardlink;
 
+use Exception;
 use Pimcore\Model\Document;
 use Pimcore\Model\Document\Hardlink\Wrapper\Hardlink;
-use Pimcore\Model\Document\Hardlink\Wrapper\WrapperInterface;
 use Pimcore\Tool\Serialize;
 
 class Service
 {
     /**
-     *
-     * @return WrapperInterface|Hardlink|null
-     *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function wrap(Document $doc): Wrapper\WrapperInterface|Wrapper\Hardlink|null
     {
@@ -57,8 +54,6 @@ class Service
     /**
      * @internal
      *
-     * @static
-     *
      * @return Document\Hardlink\Wrapper\WrapperInterface
      */
     public static function upperCastDocument(Document $doc): Wrapper\WrapperInterface
@@ -81,10 +76,7 @@ class Service
     }
 
     /**
-     *
-     * @return WrapperInterface|Hardlink|null
-     *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      *
@@ -115,10 +107,7 @@ class Service
     }
 
     /**
-     *
-     * @return WrapperInterface|Hardlink|null
-     *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */

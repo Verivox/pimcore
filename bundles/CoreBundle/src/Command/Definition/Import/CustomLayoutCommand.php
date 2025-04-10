@@ -16,10 +16,11 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\Command\Definition\Import;
 
+use Exception;
 use Pimcore\Logger;
-use Pimcore\Model\AbstractModel;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\ClassDefinition\CustomLayout;
+use Pimcore\Model\ModelInterface;
 use Symfony\Component\Console\Input\InputOption;
 
 /**
@@ -68,14 +69,14 @@ class CustomLayoutCommand extends AbstractStructureImportCommand
      *
      *
      *
-     * @throws \Exception
+     * @throws Exception
      */
-    protected function loadDefinition(string $name): ?AbstractModel
+    protected function loadDefinition(string $name): ?ModelInterface
     {
         return CustomLayout::getByName($name);
     }
 
-    protected function createDefinition(string $name): ?AbstractModel
+    protected function createDefinition(string $name): ?ModelInterface
     {
         $className = $this->input->getOption('class-name');
         if ($className) {
@@ -93,7 +94,7 @@ class CustomLayoutCommand extends AbstractStructureImportCommand
         return null;
     }
 
-    protected function import(AbstractModel $definition, string $json = null): bool
+    protected function import(ModelInterface $definition, ?string $json = null): bool
     {
         if (!$definition instanceof CustomLayout) {
             return false;
@@ -112,7 +113,7 @@ class CustomLayoutCommand extends AbstractStructureImportCommand
             $definition->save();
 
             return true;
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::error($e->getMessage());
         }
 

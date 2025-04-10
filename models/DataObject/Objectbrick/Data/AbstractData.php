@@ -23,6 +23,7 @@ use Pimcore\Model\DataObject\Concrete;
 use Pimcore\Model\DataObject\Exception\InheritanceParentNotFoundException;
 use Pimcore\Model\DataObject\Localizedfield;
 use Pimcore\Model\DataObject\ObjectAwareFieldInterface;
+use Pimcore\Model\DataObject\Service;
 
 /**
  * @method Dao getDao()
@@ -168,15 +169,24 @@ abstract class AbstractData extends Model\AbstractModel implements Model\DataObj
             return $this->$key;
         }
 
-        return false;
+        $definition = $this->getDefinition();
+        $fd = $definition->getFieldDefinition($key);
+        if ($fd instanceof Model\DataObject\ClassDefinition\Data\CalculatedValue) {
+            $value = new Model\DataObject\Data\CalculatedValue($key);
+            $value->setContextualData('objectbrick', $this->getFieldname(), $definition->getKey(), $fd->getName(), null, null, $fd);
+
+            return Service::getCalculatedFieldValue($this, $value);
+        }
+
+        return null;
     }
 
-    public function get(string $fieldName, string $language = null): mixed
+    public function get(string $fieldName, ?string $language = null): mixed
     {
         return $this->{'get'.ucfirst($fieldName)}($language);
     }
 
-    public function set(string $fieldName, mixed $value, string $language = null): mixed
+    public function set(string $fieldName, mixed $value, ?string $language = null): mixed
     {
         return $this->{'set'.ucfirst($fieldName)}($value, $language);
     }
@@ -190,9 +200,10 @@ abstract class AbstractData extends Model\AbstractModel implements Model\DataObj
         $lazyLoadedFieldNames = [];
         $fields = $this->getDefinition()->getFieldDefinitions(['suppressEnrichment' => true]);
         foreach ($fields as $field) {
-            if ($field instanceof LazyLoadingSupportInterface
-                && $field instanceof DataObject\ClassDefinition\Data
-                && $field->getLazyLoading()) {
+            if (
+                $field instanceof LazyLoadingSupportInterface &&
+                $field->getLazyLoading()
+            ) {
                 $lazyLoadedFieldNames[] = $field->getName();
             }
         }

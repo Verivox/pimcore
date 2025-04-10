@@ -15,6 +15,8 @@
 
 namespace Pimcore\Model\Metadata\Predefined;
 
+use Exception;
+use Pimcore\Config;
 use Pimcore\Model;
 use Symfony\Component\Uid\Uuid as Uid;
 
@@ -29,7 +31,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
 
     public function configure(): void
     {
-        $config = \Pimcore::getContainer()->getParameter('pimcore.config');
+        $config = Config::getSystemConfiguration();
 
         $storageConfig = $config['config_location'][self::CONFIG_KEY];
 
@@ -44,7 +46,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
      *
      * @throws Model\Exception\NotFoundException
      */
-    public function getById(string $id = null): void
+    public function getById(?string $id = null): void
     {
         if ($id != null) {
             $this->model->setId($id);
@@ -65,9 +67,9 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
 
     /**
      *
-     * @throws \Exception
+     * @throws Exception
      */
-    public function getByNameAndLanguage(string $name = null, string $language = null): void
+    public function getByNameAndLanguage(?string $name = null, ?string $language = null): void
     {
         $list = new Listing();
         /** @var Model\Metadata\Predefined[] $definitions */
@@ -91,7 +93,7 @@ class Dao extends Model\Dao\PimcoreLocationAwareConfigDao
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     public function save(): void
     {

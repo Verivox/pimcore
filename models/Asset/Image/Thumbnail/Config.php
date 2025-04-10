@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Asset\Image\Thumbnail;
 
+use Exception;
 use Pimcore\Cache\RuntimeCache;
 use Pimcore\Logger;
 use Pimcore\Model;
@@ -156,7 +157,7 @@ final class Config extends Model\AbstractModel
         if (is_string($config)) {
             try {
                 $thumbnail = self::getByName($config);
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Logger::error('requested thumbnail ' . $config . ' is not defined');
 
                 return null;
@@ -178,7 +179,7 @@ final class Config extends Model\AbstractModel
     /**
      *
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function getByName(string $name): ?Config
     {
@@ -191,11 +192,11 @@ final class Config extends Model\AbstractModel
         try {
             $thumbnail = RuntimeCache::get($cacheKey);
             if (!$thumbnail) {
-                throw new \Exception('Thumbnail in registry is null');
+                throw new Exception('Thumbnail in registry is null');
             }
 
             $thumbnail->setName($name);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             try {
                 $thumbnail = new self();
                 /** @var Model\Asset\Image\Thumbnail\Config\Dao $dao */
@@ -241,7 +242,7 @@ final class Config extends Model\AbstractModel
      */
     public static function getPreviewConfig(): Config
     {
-        $customPreviewImageThumbnail = \Pimcore::getContainer()->getParameter('pimcore.config')['assets']['preview_image_thumbnail'];
+        $customPreviewImageThumbnail = \Pimcore\Config::getSystemConfiguration('assets')['preview_image_thumbnail'];
         $thumbnail = null;
 
         if ($customPreviewImageThumbnail) {
@@ -506,7 +507,7 @@ final class Config extends Model\AbstractModel
         }
 
         if (isset($config['quality'])) {
-            $pipe->setQuality($config['quality']);
+            $pipe->setQuality((int)$config['quality']);
         }
 
         if (isset($config['cover'])) {
@@ -769,7 +770,7 @@ final class Config extends Model\AbstractModel
         foreach ($this->items as &$item) {
             if (in_array($item['method'], ['addOverlay', 'addOverlayFit'])) {
                 if (isset($item['arguments']['id'])) {
-                    $img = Model\Asset\Image::getById($item['arguments']['id']);
+                    $img = Model\Asset\Image::getById((int)$item['arguments']['id']);
                     if ($img) {
                         $item['arguments']['path'] = $img->getFullPath();
                     }
@@ -784,7 +785,7 @@ final class Config extends Model\AbstractModel
      */
     public static function getAutoFormats(): array
     {
-        return \Pimcore::getContainer()->getParameter('pimcore.config')['assets']['image']['thumbnails']['auto_formats'];
+        return \Pimcore\Config::getSystemConfiguration('assets')['image']['thumbnails']['auto_formats'];
     }
 
     /**

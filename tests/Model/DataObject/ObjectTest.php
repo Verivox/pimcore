@@ -16,8 +16,10 @@ declare(strict_types=1);
 
 namespace Pimcore\Tests\Model\DataObject;
 
+use Exception;
 use Pimcore\Db;
 use Pimcore\Model\DataObject;
+use Pimcore\Model\DataObject\QuantityValue\Unit;
 use Pimcore\Model\Element\Service;
 use Pimcore\Model\Element\ValidationException;
 use Pimcore\Tests\Support\Test\ModelTestCase;
@@ -37,7 +39,7 @@ class ObjectTest extends ModelTestCase
      */
     public function testParentIdentical(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage("ParentID and ID are identical, an element can't be the parent of itself in the tree.");
         $savedObject = TestHelper::createEmptyObject();
         $this->assertTrue($savedObject->getId() > 0);
@@ -62,12 +64,26 @@ class ObjectTest extends ModelTestCase
      */
     public function testParentIs0(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
         $savedObject = TestHelper::createEmptyObject('', false);
-        $this->assertTrue($savedObject->getId() == 0);
+        $this->assertNull($savedObject->getId());
 
         $savedObject->setParentId(0);
+        $savedObject->save();
+    }
+
+    /**
+     * Parent ID of a new object cannot be null
+     */
+    public function testParentIsNull(): void
+    {
+        $this->expectException(Exception::class);
+        $this->expectExceptionMessage('ParentID is mandatory and can´t be null. If you want to add the element as a child to the tree´s root node, consider setting ParentID to 1.');
+        $savedObject = TestHelper::createEmptyObject('', false);
+        $this->assertNull($savedObject->getId());
+
+        $savedObject->setParentId(null);
         $savedObject->save();
     }
 
@@ -78,10 +94,10 @@ class ObjectTest extends ModelTestCase
      */
     public function testParentNotFound(): void
     {
-        $this->expectException(\Exception::class);
+        $this->expectException(Exception::class);
         $this->expectExceptionMessage('ParentID not found.');
         $savedObject = TestHelper::createEmptyObject('', false);
-        $this->assertTrue($savedObject->getId() == 0);
+        $this->assertEquals(null, $savedObject->getId());
 
         $savedObject->setParentId(999999);
         $savedObject->save();
@@ -208,6 +224,21 @@ class ObjectTest extends ModelTestCase
     }
 
     /**
+     * Verifies a newly published object gets the default values of mandatory fields
+     */
+    public function testDefaultValueAndMandatorySavedToVersion(): void
+    {
+        $object = TestHelper::createEmptyObject('', false, true);
+        $object->setOmitMandatoryCheck(false);
+        $object->save();
+
+        $versions = $object->getVersions();
+        $latestVersion = end($versions);
+
+        $this->assertEquals('default', $latestVersion->getData()->getMandatoryInputWithDefault(), 'Expected default value saved to version');
+    }
+
+    /**
      * Verifies that when an object gets cloned, the fields get copied properly
      */
     public function testCloning(): void
@@ -252,7 +283,7 @@ class ObjectTest extends ModelTestCase
         $object->setTextarea('TextareaValue');
         $object->setWysiwyg('WysiwygValue');
         $object->setPassword('PasswordValue');
-        $iqv = new \Pimcore\Model\DataObject\Data\InputQuantityValue('1', 'km');
+        $iqv = new \Pimcore\Model\DataObject\Data\InputQuantityValue('1', Unit::getByAbbreviation('km')->getId());
         $object->setInputQuantityValue($iqv);
         $object->save();
 
@@ -338,6 +369,29 @@ class ObjectTest extends ModelTestCase
         $iqv = ['value' => null, 'unit' => null];
         $value = $dataType->getDataFromEditmode($iqv, $object);
         $this->assertNull($value);
+    }
+
+    public function testSanitization(): void
+    {
+        $db = Db::get();
+
+        $object = TestHelper::createEmptyObject();
+        $object->setWysiwyg('!@#$%^abc\'"<script>console.log("ops");</script> 测试&lt; edf &gt; "');
+        $object->save();
+
+        //reload from db
+        $object = DataObject::getById($object->getId(), ['force' => true]);
+
+        $this->assertEquals('!@#$%^abc\'" 测试< edf > "', html_entity_decode($object->getWysiwyg()), 'Asseting setter/getter value is sanitized');
+
+        $dbQueryValue = $db->fetchOne(
+            sprintf(
+                'SELECT `wysiwyg` FROM object_query_%s WHERE oo_id = %d',
+                $object->getClassName(),
+                $object->getId()
+            )
+        );
+        $this->assertEquals('!@#$%^abc\'" 测试< edf > "', html_entity_decode($dbQueryValue), 'Asserting object_query table value is persisted as sanitized');
     }
 
     public function testInputCheckValidate(): void

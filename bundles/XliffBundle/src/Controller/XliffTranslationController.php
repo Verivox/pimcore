@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\XliffBundle\Controller;
 
+use Exception;
 use Pimcore\Bundle\XliffBundle\ExportService\Exporter\ExporterInterface;
 use Pimcore\Bundle\XliffBundle\ExportService\ExportServiceInterface;
 use Pimcore\Bundle\XliffBundle\ImportDataExtractor\ImportDataExtractorInterface;
@@ -29,29 +30,25 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
-/**
- * @Route("/translation")
- *
- */
+#[Route('/translation')]
 class XliffTranslationController extends UserAwareController
 {
     use JsonHelperTrait;
 
     /**
-     * @Route("/xliff-export", name="pimcore_bundle_xliff_translation_xliffexport", methods={"POST"})
-     *
-     * @throws \Exception
+     * @throws Exception
      */
+    #[Route('/xliff-export', name: 'pimcore_bundle_xliff_translation_xliffexport', methods: ['POST'])]
     public function xliffExportAction(Request $request, ExportServiceInterface $exportService): JsonResponse
     {
         $this->checkPermission('xliff_import_export');
 
-        $id = $request->get('id');
-        $data = $this->decodeJson($request->get('data'));
-        $source = $request->get('source');
-        $target = $request->get('target');
+        $id = $request->request->getString('id');
+        $data = $this->decodeJson($request->request->getString('data'));
+        $source = $request->request->getString('source');
+        $target = $request->request->getString('target');
 
         $translationItems = new TranslationItemCollection();
 
@@ -67,16 +64,12 @@ class XliffTranslationController extends UserAwareController
         ]);
     }
 
-    /**
-     * @Route("/xliff-export-download", name="pimcore_bundle_xliff_translation_exportdownload", methods={"GET"})
-     *
-     *
-     */
+    #[Route('/xliff-export-download', name: 'pimcore_bundle_xliff_translation_exportdownload', methods: ['GET'])]
     public function xliffExportDownloadAction(Request $request, ExporterInterface $translationExporter, ExportServiceInterface $exportService): BinaryFileResponse
     {
         $this->checkPermission('xliff_import_export');
 
-        $id = $request->get('id');
+        $id = $request->query->getString('id');
         $exportFile = $exportService->getTranslationExporter()->getExportFilePath($id);
 
         $response = new BinaryFileResponse($exportFile);
@@ -87,11 +80,7 @@ class XliffTranslationController extends UserAwareController
         return $response;
     }
 
-    /**
-     * @Route("/xliff-import-upload", name="pimcore_bundle_xliff_translation_xliffimportupload", methods={"POST"})
-     *
-     * @throws \Exception
-     */
+    #[Route('/xliff-import-upload', name: 'pimcore_bundle_xliff_translation_xliffimportupload', methods: ['POST'])]
     public function xliffImportUploadAction(Request $request, ImportDataExtractorInterface $importDataExtractor): JsonResponse
     {
         $this->checkPermission('xliff_import_export');
@@ -127,16 +116,15 @@ class XliffTranslationController extends UserAwareController
     }
 
     /**
-     * @Route("/xliff-import-element", name="pimcore_bundle_xliff_translation_xliffimportelement", methods={"POST"})
-     *
-     * @throws \Exception
+     * @throws Exception
      */
+    #[Route('/xliff-import-element', name: 'pimcore_bundle_xliff_translation_xliffimportelement', methods: ['POST'])]
     public function xliffImportElementAction(Request $request, ImportDataExtractorInterface $importDataExtractor, ImporterServiceInterface $importerService): JsonResponse
     {
         $this->checkPermission('xliff_import_export');
 
-        $id = $request->get('id');
-        $step = (int) $request->get('step');
+        $id = $request->request->getString('id');
+        $step = $request->request->getInt('step');
 
         try {
             $attributeSet = $importDataExtractor->extractElement($id, $step);
@@ -145,7 +133,7 @@ class XliffTranslationController extends UserAwareController
             } else {
                 Logger::warning(sprintf('Could not resolve element %s', $id));
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             Logger::err($e->getMessage());
 
             return $this->jsonResponse([

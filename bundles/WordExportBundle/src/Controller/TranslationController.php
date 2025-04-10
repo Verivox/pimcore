@@ -15,6 +15,9 @@
 
 namespace Pimcore\Bundle\WordExportBundle\Controller;
 
+use DOMDocument;
+use Exception;
+use Locale;
 use Pimcore\Controller\Traits\JsonHelperTrait;
 use Pimcore\Controller\UserAwareController;
 use Pimcore\Logger;
@@ -29,32 +32,25 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
-/**
- * @Route("/translation")
- *
- */
+#[Route('/translation')]
 class TranslationController extends UserAwareController
 {
     use JsonHelperTrait;
 
     private const PERMISSION = 'word_export';
 
-    /**
-     * @Route("/word-export", name="pimcore_bundle_wordexport_translation_wordexport", methods={"POST"})
-     *
-     *
-     */
+    #[Route('/word-export', name: 'pimcore_bundle_wordexport_translation_wordexport', methods: ['POST'])]
     public function wordExportAction(Request $request, Filesystem $filesystem): JsonResponse
     {
         $this->checkPermission(self::PERMISSION);
         ini_set('display_errors', 'off');
 
-        $id = $this->sanitzeExportId((string)$request->get('id'));
+        $id = $this->sanitzeExportId($request->request->getString('id'));
         $exportFile = $this->getExportFilePath($id, false);
-        $data = $this->decodeJson($request->get('data'));
-        $source = $request->get('source');
+        $data = $this->decodeJson($request->request->getString('data'));
+        $source = $request->request->getString('source');
 
         if (!is_file($exportFile)) {
             $filesystem->dumpFile($exportFile, '');
@@ -167,7 +163,7 @@ class TranslationController extends UserAwareController
                     unset($dom);
 
                     // force closing tags
-                    $doc = new \DOMDocument();
+                    $doc = new DOMDocument();
                     libxml_use_internal_errors(true);
                     $doc->loadHTML('<?xml encoding="UTF-8"><article>' . $html . '</article>');
                     libxml_clear_errors();
@@ -190,7 +186,7 @@ class TranslationController extends UserAwareController
 
                         $locale = str_replace('-', '_', $source);
                         if (!Tool::isValidLanguage($locale)) {
-                            $locale = \Locale::getPrimaryLanguage($locale);
+                            $locale = Locale::getPrimaryLanguage($locale);
                         }
 
                         $output .= '
@@ -234,7 +230,7 @@ class TranslationController extends UserAwareController
                     fwrite($f, $output);
                     fclose($f);
                 }
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 Logger::error('Word Export: ' . $e);
 
                 throw $e;
@@ -246,15 +242,15 @@ class TranslationController extends UserAwareController
         ]);
     }
 
-    /**
-     * @Route("/word-export-download", name="pimcore_bundle_wordexport_translation_wordexportdownload", methods={"GET"})
-     *
-     *
-     */
+    #[Route(
+        '/word-export-download',
+        name: 'pimcore_bundle_wordexport_translation_wordexportdownload',
+        methods: ['GET']
+    )]
     public function wordExportDownloadAction(Request $request): Response
     {
         $this->checkPermission(self::PERMISSION);
-        $id = $this->sanitzeExportId((string)$request->get('id'));
+        $id = $this->sanitzeExportId($request->query->getString('id'));
         $exportFile = $this->getExportFilePath($id, true);
 
         // no conversion, output html file, works fine with MS Word and LibreOffice

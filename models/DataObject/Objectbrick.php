@@ -16,6 +16,8 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\DataObject;
 
+use __PHP_Incomplete_Class;
+use Exception;
 use Pimcore\Logger;
 use Pimcore\Model;
 use Pimcore\Model\DataObject;
@@ -81,11 +83,10 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
             return $values;
         }
 
-        if (empty($this->items)) {
-            foreach ($this->getObjectVars() as $var) {
-                if ($var instanceof Objectbrick\Data\AbstractData) {
-                    $this->items[] = $var;
-                }
+        foreach ($this->getObjectVars() as $var) {
+            if ($var instanceof Objectbrick\Data\AbstractData &&
+                !in_array($var, $this->items, true)) {
+                $this->items[] = $var;
             }
         }
 
@@ -186,10 +187,6 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
 
     public function getObject(): ?Concrete
     {
-        if ($this->objectId && !$this->object) {
-            $this->setObject(Concrete::getById($this->objectId));
-        }
-
         return $this->object;
     }
 
@@ -222,7 +219,7 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
     public function __sleep(): array
     {
         $finalVars = [];
-        $blockedVars = ['object'];
+        $blockedVars = ['object', 'brickGetters'];
         $vars = parent::__sleep();
 
         foreach ($vars as $value) {
@@ -251,7 +248,7 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
         }
 
         foreach ($this->items as $key => $item) {
-            if ($item instanceof \__PHP_Incomplete_Class) {
+            if ($item instanceof __PHP_Incomplete_Class) {
                 unset($this->items[$key]);
                 Logger::error('brick item ' . $key . ' does not exist anymore');
             }
@@ -270,7 +267,7 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
 
     /**
      *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
@@ -279,23 +276,24 @@ class Objectbrick extends Model\AbstractModel implements DirtyIndicatorInterface
         $item = $this->get($brick);
         if ($item && !$item->isLazyKeyLoaded($field)) {
             $brickDef = Model\DataObject\Objectbrick\Definition::getByKey($brick);
-            /** @var Model\DataObject\ClassDefinition\Data\CustomResourcePersistingInterface $fieldDef */
             $fieldDef = $brickDef->getFieldDefinition($field);
-            $context = [];
-            $context['object'] = $this->getObject();
-            $context['containerType'] = 'objectbrick';
-            $context['containerKey'] = $brick;
-            $context['brickField'] = $brickField;
-            $context['fieldname'] = $field;
-            $params['context'] = $context;
+            if ($fieldDef instanceof DataObject\ClassDefinition\Data\CustomResourcePersistingInterface) {
+                $context = [];
+                $context['object'] = $this->getObject();
+                $context['containerType'] = 'objectbrick';
+                $context['containerKey'] = $brick;
+                $context['brickField'] = $brickField;
+                $context['fieldname'] = $field;
+                $params['context'] = $context;
 
-            $isDirtyDetectionDisabled = DataObject::isDirtyDetectionDisabled();
-            DataObject::disableDirtyDetection();
-            $data = $fieldDef->load($this->$brick, $params);
-            DataObject::setDisableDirtyDetection($isDirtyDetectionDisabled);
+                $isDirtyDetectionDisabled = DataObject::isDirtyDetectionDisabled();
+                DataObject::disableDirtyDetection();
+                $data = $fieldDef->load($this->$brick, $params);
+                DataObject::setDisableDirtyDetection($isDirtyDetectionDisabled);
 
-            $item->setObjectVar($field, $data);
-            $item->markLazyKeyAsLoaded($field);
+                $item->setObjectVar($field, $data);
+                $item->markLazyKeyAsLoaded($field);
+            }
         }
     }
 

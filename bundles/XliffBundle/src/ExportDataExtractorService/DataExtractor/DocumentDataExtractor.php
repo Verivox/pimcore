@@ -16,6 +16,7 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\XliffBundle\ExportDataExtractorService\DataExtractor;
 
+use Exception;
 use Pimcore\Bundle\XliffBundle\AttributeSet\Attribute;
 use Pimcore\Bundle\XliffBundle\AttributeSet\AttributeSet;
 use Pimcore\Bundle\XliffBundle\TranslationItemCollection\TranslationItem;
@@ -37,7 +38,7 @@ class DocumentDataExtractor extends AbstractElementDataExtractor
     /**
      * @param string[] $targetLanguages
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public function extract(TranslationItem $translationItem, string $sourceLanguage, array $targetLanguages): AttributeSet
     {
@@ -46,27 +47,40 @@ class DocumentDataExtractor extends AbstractElementDataExtractor
         $result = parent::extract($translationItem, $sourceLanguage, $targetLanguages);
 
         if (!$document instanceof Document) {
-            throw new \Exception('only documents allowed');
+            throw new Exception('only documents allowed');
         }
 
         $this
-            ->addDoumentEditables($document, $result)
+            ->addDocumentEditables($document, $result)
             ->addSettings($document, $result);
 
         return $result;
     }
 
     /**
-     *
-     *
-     * @throws \Exception
+     * @deprecated
      */
     protected function addDoumentEditables(Document $document, AttributeSet $result): DocumentDataExtractor
+    {
+        trigger_deprecation(
+            'pimcore/pimcore',
+            '11.1',
+            'Using "%s" is deprecated and will be removed in Pimcore 12, use "%s" instead.',
+            'addDoumentEditables',
+            'addDocumentEditables'
+        );
+
+        return $this->addDocumentEditables($document, $result);
+    }
+
+    protected function addDocumentEditables(Document $document, AttributeSet $result): DocumentDataExtractor
     {
         $editables = [];
         $service = new Document\Service;
 
         $translations = $service->getTranslations($document);
+
+        $this->resetSourceDocument($document, $result, $translations);
 
         if ($document instanceof Document\PageSnippet) {
             $editableNames = $this->EditableUsageResolver->getUsedEditableNames($document);
@@ -118,6 +132,8 @@ class DocumentDataExtractor extends AbstractElementDataExtractor
         $service = new Document\Service;
         $translations = $service->getTranslations($document);
 
+        $this->resetSourceDocument($document, $result, $translations);
+
         if ($document instanceof Document\Page) {
             $data = [
                 'title' => $document->getTitle(),
@@ -148,7 +164,10 @@ class DocumentDataExtractor extends AbstractElementDataExtractor
 
     protected function doExportProperty(Property $property): bool
     {
-        return parent::doExportProperty($property) && !in_array($property->getName(), [
+        return parent::doExportProperty($property) &&
+            !in_array(
+                $property->getName(),
+                [
                     'language',
                     'navigation_target',
                     'navigation_exclude',
@@ -158,6 +177,19 @@ class DocumentDataExtractor extends AbstractElementDataExtractor
                     'navigation_relation',
                     'navigation_accesskey',
                     'navigation_tabindex',
-                ]);
+                ]
+            );
+    }
+
+    private function resetSourceDocument(Document &$document, AttributeSet $result, array $translations): void
+    {
+        $sourceDocumentId = $translations[$result->getSourceLanguage()] ?? false;
+        if ($sourceDocumentId) {
+            $sourceDocument = Document::getById($sourceDocumentId);
+
+            if ($sourceDocument instanceof Document\PageSnippet) {
+                $document = $sourceDocument;
+            }
+        }
     }
 }

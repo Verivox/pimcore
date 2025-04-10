@@ -16,12 +16,16 @@ declare(strict_types=1);
 
 namespace Pimcore\Tool;
 
+use Exception;
+use Locale;
+use Pimcore;
 use Pimcore\Event\SystemEvents;
 use Pimcore\File;
 use Pimcore\Localization\LocaleServiceInterface;
 use Pimcore\Model\User;
 use Pimcore\Security\User\TokenStorageUserResolver;
 use Pimcore\Tool\Text\Csv;
+use stdClass;
 use Symfony\Component\EventDispatcher\GenericEvent;
 
 /**
@@ -31,19 +35,16 @@ class Admin
 {
     /**
      * finds installed languages
-     *
-     * @static
-     *
      */
     public static function getLanguages(): array
     {
-        $baseResource = \Pimcore::getContainer()->getParameter('pimcore_admin.translations.path');
-        $languageDir = \Pimcore::getKernel()->locateResource($baseResource);
-        $adminLang = \Pimcore::getContainer()->getParameter('pimcore_admin.admin_languages');
-        $appDefaultPath = \Pimcore::getContainer()->getParameter('translator.default_path');
+        $baseResource = Pimcore::getContainer()->getParameter('pimcore_admin.translations.path');
+        $languageDir = Pimcore::getKernel()->locateResource($baseResource);
+        $adminLanguages = Pimcore::getContainer()->getParameter('pimcore_admin.admin_languages');
+        $appDefaultPath = Pimcore::getContainer()->getParameter('translator.default_path');
 
-        $languages = [];
         $languageDirs = [$languageDir, $appDefaultPath];
+        $translatedLanguages = [];
         foreach ($languageDirs as $filesDir) {
             if (is_dir($filesDir)) {
                 $files = scandir($filesDir);
@@ -57,11 +58,9 @@ class Admin
                             $languageCode = $parts[1];
                         }
 
-                        if (($adminLang != null && in_array($languageCode, array_values($adminLang))) || $adminLang == null) {
-                            if ($parts[1] === 'json' || $parts[0] === 'admin') {
-                                if (\Pimcore::getContainer()->get(LocaleServiceInterface::class)->isLocale($languageCode)) {
-                                    $languages[] = $languageCode;
-                                }
+                        if ($parts[1] === 'json' || $parts[0] === 'admin') {
+                            if (Pimcore::getContainer()->get(LocaleServiceInterface::class)->isLocale($languageCode)) {
+                                $translatedLanguages[] = $languageCode;
                             }
                         }
                     }
@@ -69,14 +68,20 @@ class Admin
             }
         }
 
+        $languages = [];
+        foreach ($adminLanguages as $adminLanguage) {
+            if (in_array($adminLanguage, $translatedLanguages, true) || in_array(Locale::getPrimaryLanguage($adminLanguage), $translatedLanguages, true)) {
+                $languages[] = $adminLanguage;
+            }
+        }
+
+        if (empty($languages)) {
+            $languages = $translatedLanguages;
+        }
+
         return array_unique($languages);
     }
 
-    /**
-     * @static
-     *
-     *
-     */
     public static function getMinimizedScriptPath(string $scriptContent): array
     {
         $scriptPath = 'minified_javascript_core_'.md5($scriptContent).'.js';
@@ -92,7 +97,7 @@ class Admin
         return $params;
     }
 
-    public static function determineCsvDialect(string $file): \stdClass
+    public static function determineCsvDialect(string $file): stdClass
     {
         // minimum 10 lines, to be sure take more
         $sample = '';
@@ -103,9 +108,9 @@ class Admin
         try {
             $sniffer = new Csv();
             $dialect = $sniffer->detect($sample);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // use default settings
-            $dialect = new \stdClass();
+            $dialect = new stdClass();
             $dialect->delimiter = ';';
             $dialect->quotechar = '"';
             $dialect->escapechar = '\\';
@@ -120,31 +125,34 @@ class Admin
     }
 
     /**
-     * @static
-     *
+     * @deprecated and will be removed in Pimcore 12
      */
     public static function getMaintenanceModeFile(): string
     {
         return PIMCORE_CONFIGURATION_DIRECTORY . '/maintenance.php';
     }
 
+    /**
+     * @deprecated and will be removed in Pimcore 12
+     */
     public static function getMaintenanceModeScheduleLoginFile(): string
     {
         return PIMCORE_CONFIGURATION_DIRECTORY . '/maintenance-schedule-login.php';
     }
 
     /**
+     * @deprecated Use MaintenanceModeHelper::activate instead.
      *
-     * @throws \Exception
+     * @throws Exception
      */
     public static function activateMaintenanceMode(?string $sessionId): void
     {
         if (empty($sessionId)) {
-            $sessionId = \Pimcore::getContainer()->get('request_stack')->getSession()->getId();
+            $sessionId = Pimcore::getContainer()->get('request_stack')->getSession()->getId();
         }
 
         if (empty($sessionId)) {
-            throw new \Exception("It's not possible to activate the maintenance mode without a session-id");
+            throw new Exception("It's not possible to activate the maintenance mode without a session-id");
         }
 
         File::putPhpFile(self::getMaintenanceModeFile(), to_php_data_file_format([
@@ -153,28 +161,34 @@ class Admin
 
         @chmod(self::getMaintenanceModeFile(), 0666); // so it can be removed also via FTP, ...
 
-        \Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_ACTIVATE);
+        Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_ACTIVATE);
     }
 
     /**
-     * @static
+     * @deprecated Use MaintenanceModeHelperInterface::deactivate instead.
      */
     public static function deactivateMaintenanceMode(): void
     {
         @unlink(self::getMaintenanceModeFile());
 
-        \Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_DEACTIVATE);
+        Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_DEACTIVATE);
     }
 
     /**
-     * @static
-     *
+     * @deprecated use MaintenanceModeHelperInterface::isActive instead.
      */
     public static function isInMaintenanceMode(): bool
     {
         $file = self::getMaintenanceModeFile();
 
         if (is_file($file)) {
+            trigger_deprecation(
+                'pimcore/pimcore',
+                '11.1',
+                sprintf(
+                    "Calling Admin::activateMaintenanceMode or using maintenance mode file %s is deprecated.
+                    \tUse MaintenanceModeHelperInterface::active instead.", $file)
+            );
             $conf = include($file);
             if (isset($conf['sessionId'])) {
                 return true;
@@ -186,11 +200,21 @@ class Admin
         return false;
     }
 
+    /**
+     * @deprecated and will be removed in Pimcore 12
+     */
     public static function isMaintenanceModeScheduledForLogin(): bool
     {
         $file = self::getMaintenanceModeScheduleLoginFile();
 
         if (is_file($file)) {
+            trigger_deprecation(
+                'pimcore/pimcore',
+                '11.1',
+                sprintf(
+                    "Calling Admin::scheduleMaintenanceModeOnLogin or using maintenance mode file %s is deprecated.
+                    \tThe maintenance mode schedule on login will not work in Pimcore 12", $file)
+            );
             $conf = include($file);
             if (isset($conf['schedule']) && $conf['schedule']) {
                 return true;
@@ -202,6 +226,9 @@ class Admin
         return false;
     }
 
+    /**
+     * @deprecated and will be removed in Pimcore 12
+     */
     public static function scheduleMaintenanceModeOnLogin(): void
     {
         File::putPhpFile(self::getMaintenanceModeScheduleLoginFile(), to_php_data_file_format([
@@ -210,23 +237,22 @@ class Admin
 
         @chmod(self::getMaintenanceModeScheduleLoginFile(), 0666); // so it can be removed also via FTP, ...
 
-        \Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_SCHEDULE_LOGIN);
+        Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_SCHEDULE_LOGIN);
     }
 
+    /**
+     * @deprecated and will be removed in Pimcore 12
+     */
     public static function unscheduleMaintenanceModeOnLogin(): void
     {
         @unlink(self::getMaintenanceModeScheduleLoginFile());
 
-        \Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_UNSCHEDULE_LOGIN);
+        Pimcore::getEventDispatcher()->dispatch(new GenericEvent(), SystemEvents::MAINTENANCE_MODE_UNSCHEDULE_LOGIN);
     }
 
-    /**
-     * @static
-     *
-     */
     public static function getCurrentUser(): ?User
     {
-        return \Pimcore::getContainer()
+        return Pimcore::getContainer()
             ->get(TokenStorageUserResolver::class)
             ->getUser();
     }

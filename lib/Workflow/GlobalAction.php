@@ -19,7 +19,7 @@ namespace Pimcore\Workflow;
 use Pimcore\Workflow\Notes\CustomHtmlServiceInterface;
 use Pimcore\Workflow\Notes\NotesAwareInterface;
 use Pimcore\Workflow\Notes\NotesAwareTrait;
-use Symfony\Component\Workflow\Workflow;
+use Symfony\Component\Workflow\WorkflowInterface;
 
 class GlobalAction implements NotesAwareInterface
 {
@@ -36,7 +36,7 @@ class GlobalAction implements NotesAwareInterface
 
     private string $workflowName;
 
-    public function __construct(string $name, array $options, ExpressionService $expressionService, string $workflowName, CustomHtmlServiceInterface $customHtmlService = null)
+    public function __construct(string $name, array $options, ExpressionService $expressionService, string $workflowName, ?CustomHtmlServiceInterface $customHtmlService = null)
     {
         $this->name = $name;
         $this->options = $options;
@@ -80,7 +80,7 @@ class GlobalAction implements NotesAwareInterface
         return $this->options['guard'] ?? null;
     }
 
-    public function isGuardValid(Workflow $workflow, object $subject): bool
+    public function isGuardValid(WorkflowInterface $workflow, object $subject): bool
     {
         if (empty($this->getGuard())) {
             return true;

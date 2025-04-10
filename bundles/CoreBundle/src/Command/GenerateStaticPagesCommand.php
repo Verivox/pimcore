@@ -16,9 +16,12 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\Command;
 
+use InvalidArgumentException;
+use Pimcore;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Document\StaticPageGenerator;
 use Pimcore\Model\Document;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
@@ -27,6 +30,10 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @internal
  */
+#[AsCommand(
+    name: 'pimcore:documents:generate-static-pages',
+    description: 'Regenerate static pages'
+)]
 class GenerateStaticPagesCommand extends AbstractCommand
 {
     public function __construct(protected StaticPageGenerator $staticPageGenerator)
@@ -37,8 +44,6 @@ class GenerateStaticPagesCommand extends AbstractCommand
     protected function configure(): void
     {
         $this
-            ->setName('pimcore:documents:generate-static-pages')
-            ->setDescription('Regenerate static pages')
             ->addOption(
                 'path',
                 'p',
@@ -58,7 +63,7 @@ class GenerateStaticPagesCommand extends AbstractCommand
             $parent = Document::getByPath(rtrim($path, '/'));
 
             if (!$parent) {
-                throw new \InvalidArgumentException(sprintf('Document with path %s not found', $path));
+                throw new InvalidArgumentException(sprintf('Document with path %s not found', $path));
             }
 
             $ids = $db->fetchFirstColumn('SELECT documents.id FROM `documents_page` LEFT JOIN documents ON documents_page.id = documents.id WHERE `staticGeneratorEnabled` = 1  AND (documents.id = :id OR `path` like :path)', [
@@ -90,7 +95,7 @@ class GenerateStaticPagesCommand extends AbstractCommand
                 $progressBar->advance();
 
                 if ($progressBar->getProgress() % 10 === 0) {
-                    \Pimcore::collectGarbage();
+                    Pimcore::collectGarbage();
                 }
             }
 

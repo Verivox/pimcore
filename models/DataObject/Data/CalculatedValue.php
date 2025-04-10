@@ -50,12 +50,11 @@ class CalculatedValue implements OwnerAwareFieldInterface
     }
 
     /**
-     * @param mixed $keyDefinition
      *
      * @internal
      *
      */
-    public function setContextualData(string $ownerType, ?string $ownerName, int|string|null $index, ?string $position, int $groupId = null, int $keyId = null, mixed $keyDefinition = null): void
+    public function setContextualData(string $ownerType, ?string $ownerName, int|string|null $index, ?string $position, ?int $groupId = null, ?int $keyId = null, mixed $keyDefinition = null): void
     {
         $this->ownerType = $ownerType;
         $this->ownerName = $ownerName;

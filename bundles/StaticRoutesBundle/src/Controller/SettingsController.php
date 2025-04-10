@@ -22,23 +22,19 @@ use Pimcore\Controller\UserAwareController;
 use Pimcore\Model\Exception\ConfigWriteException;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
-use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\Routing\Attribute\Route;
 
 class SettingsController extends UserAwareController
 {
     use JsonHelperTrait;
 
-    /**
-     * @Route("/staticroutes", name="pimcore_bundle_staticroutes_settings_staticroutes", methods={"POST"})
-     *
-     *
-     */
+    #[Route('/staticroutes', name: 'pimcore_bundle_staticroutes_settings_staticroutes', methods: ['POST'])]
     public function staticroutesAction(Request $request): JsonResponse
     {
-        if ($request->get('data')) {
+        if ($request->request->has('data')) {
             $this->checkPermission('routes');
 
-            $data = $this->decodeJson($request->get('data'));
+            $data = $this->decodeJson($request->request->getString('data'));
 
             if (is_array($data)) {
                 foreach ($data as &$value) {
@@ -48,8 +44,7 @@ class SettingsController extends UserAwareController
                 }
             }
 
-            if ($request->get('xaction') == 'destroy') {
-                $data = $this->decodeJson($request->get('data'));
+            if ($request->query->getString('xaction') == 'destroy') {
                 $id = $data['id'];
                 $route = Staticroute::getById($id);
                 if (!$route->isWriteable()) {
@@ -58,7 +53,7 @@ class SettingsController extends UserAwareController
                 $route->delete();
 
                 return $this->jsonResponse(['success' => true, 'data' => []]);
-            } elseif ($request->get('xaction') == 'update') {
+            } elseif ($request->query->getString('xaction') == 'update') {
                 // save routes
                 $route = Staticroute::getById($data['id']);
                 if (!$route->isWriteable()) {
@@ -70,7 +65,7 @@ class SettingsController extends UserAwareController
                 $route->save();
 
                 return $this->jsonResponse(['data' => $route->getObjectVars(), 'success' => true]);
-            } elseif ($request->get('xaction') == 'create') {
+            } elseif ($request->query->getString('xaction') == 'create') {
                 if (!(new Staticroute())->isWriteable()) {
                     throw new ConfigWriteException();
                 }
@@ -92,7 +87,7 @@ class SettingsController extends UserAwareController
 
             $list = new Staticroute\Listing();
 
-            if ($filter = $request->get('filter')) {
+            if ($filter = $request->request->getString('filter')) {
                 $list->setFilter(function (Staticroute $staticRoute) use ($filter) {
                     foreach ($staticRoute->getObjectVars() as $value) {
                         if (!is_scalar($value)) {

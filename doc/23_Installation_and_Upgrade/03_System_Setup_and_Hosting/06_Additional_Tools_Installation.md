@@ -31,41 +31,18 @@ It's possible to either choose to install LibreOffice/Chromium or to use them vi
 apt-get install libreoffice libreoffice-script-provider-python libreoffice-math xfonts-75dpi poppler-utils inkscape libxrender1 libfontconfig1 ghostscript
 ```
 
-### Chromium (Chrome Headless)
-
-First of all, you need to add and install the required library via composer:
-```bash
-composer require chrome-php/chrome
-```
-
-You can then directly install and use the Chromium binary locally or use it in Docker Container, accessing it via WebSocket connection.
-
-#### Locally
-Please follow the steps on [https://www.chromium.org/getting-involved/download-chromium](https://www.chromium.org/getting-involved/download-chromium) for installing Chromium locally.
-
-
-#### Docker
-Add a new service as:
-```dockerfile
-    chrome:
-        image: browserless/chrome
-```
-and set accordingly:
-- config `pimcore.chromium.uri` value (e.g. `ws://chrome:3000/`) 
-- web2print settings hostUrl as the Docker web server service (e.g. `http://nginx:80`)
-
 ### Gotenberg
 
-To install it, please add it in your Docker Compose services stack as [https://gotenberg.dev/docs/get-started/docker-compose#quick-start](https://gotenberg.dev/docs/get-started/docker-compose#quick-start).
+To install it, please add it in your Docker Compose services stack as [https://gotenberg.dev/docs/getting-started/installation#docker-compose](https://gotenberg.dev/docs/getting-started/installation#docker-compose).
 
 Configure the Docker services accordingly:
 
 - `pimcore.gotenberg.base_url` which by default to `http://gotenberg:3000`
-- `pimcore.documents.preview_url_prefix` for example to `nginx:80`
+- `pimcore.documents.preview_url_prefix` for example to `http://nginx:80`
 
 Make sure to add and install the required library via composer:
 ```bash
-composer require gotenberg/gotenberg-php
+composer require gotenberg/gotenberg-php ^2.0
 ```
 
 ## Image Optimizers

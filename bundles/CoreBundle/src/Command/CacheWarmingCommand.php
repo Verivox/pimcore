@@ -16,8 +16,10 @@ declare(strict_types=1);
 
 namespace Pimcore\Bundle\CoreBundle\Command;
 
+use InvalidArgumentException;
 use Pimcore\Cache\Tool\Warming;
 use Pimcore\Console\AbstractCommand;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
@@ -25,6 +27,10 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * @internal
  */
+#[AsCommand(
+    name: 'pimcore:cache:warming',
+    description: 'Warm up caches'
+)]
 class CacheWarmingCommand extends AbstractCommand
 {
     protected array $validTypes = [
@@ -60,8 +66,6 @@ class CacheWarmingCommand extends AbstractCommand
     protected function configure(): void
     {
         $this
-            ->setName('pimcore:cache:warming')
-            ->setDescription('Warm up caches')
             ->addOption(
                 'types',
                 't',
@@ -114,7 +118,7 @@ class CacheWarmingCommand extends AbstractCommand
             $assetTypes = $this->getArrayOption('assetTypes', 'validAssetTypes', 'asset type') ?? [];
             $objectTypes = $this->getArrayOption('objectTypes', 'validObjectTypes', 'object type') ?? [];
             $objectClasses = $this->input->getOption('classes') ?? [];
-        } catch (\InvalidArgumentException $e) {
+        } catch (InvalidArgumentException $e) {
             $this->writeError($e->getMessage());
 
             return 1;
@@ -142,7 +146,7 @@ class CacheWarmingCommand extends AbstractCommand
     protected function writeWarmingMessage(string $type, array $types, string $extra = ''): void
     {
         $output = sprintf('Warming <comment>%s</comment> cache', $type);
-        if (null !== $types && count($types) > 0) {
+        if ($types) {
             $output .= sprintf(' for types %s', $this->humanList($types, 'and', '<info>%s</info>'));
         } else {
             $output .= sprintf(' for <info>all</info> types');
@@ -161,7 +165,7 @@ class CacheWarmingCommand extends AbstractCommand
      *
      *
      */
-    protected function humanList(array $list, string $glue = 'or', string $template = null): string
+    protected function humanList(array $list, string $glue = 'or', ?string $template = null): string
     {
         if (null !== $template) {
             array_walk($list, function (&$item) use ($template) {
@@ -202,7 +206,7 @@ class CacheWarmingCommand extends AbstractCommand
                 if (!in_array($value, $this->$property)) {
                     $message = sprintf('Invalid %s: %s', $singular, $value);
 
-                    throw new \InvalidArgumentException($message);
+                    throw new InvalidArgumentException($message);
                 }
             }
         }

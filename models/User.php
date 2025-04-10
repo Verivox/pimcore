@@ -33,6 +33,8 @@ final class User extends User\UserRole implements UserInterface
 
     protected ?string $password = null;
 
+    protected ?string $passwordRecoveryToken = null;
+
     protected ?string $firstname = null;
 
     protected ?string $lastname = null;
@@ -40,6 +42,8 @@ final class User extends User\UserRole implements UserInterface
     protected ?string $email = null;
 
     protected string $language = 'en';
+
+    protected ?string $datetimeLocale = null;
 
     protected bool $admin = false;
 
@@ -77,7 +81,7 @@ final class User extends User\UserRole implements UserInterface
      */
     protected ?array $mergedWebsiteTranslationLanguagesView = null;
 
-    protected int $lastLogin;
+    protected ?int $lastLogin = null;
 
     protected ?string $keyBindings = null;
 
@@ -104,6 +108,26 @@ final class User extends User\UserRole implements UserInterface
         if (strlen((string) $password) > 4) {
             $this->password = $password;
         }
+
+        return $this;
+    }
+
+    /**
+     * @internal
+     */
+    public function getPasswordRecoveryToken(): ?string
+    {
+        return $this->passwordRecoveryToken;
+    }
+
+    /**
+     * @internal
+     *
+     * @return $this
+     */
+    public function setPasswordRecoveryToken(?string $passwordRecoveryToken): static
+    {
+        $this->passwordRecoveryToken = $passwordRecoveryToken;
 
         return $this;
     }
@@ -445,7 +469,7 @@ final class User extends User\UserRole implements UserInterface
                 $targetFile = File::getLocalTempFilePath('png');
 
                 $image = \Pimcore\Image::getInstance();
-                if($image->load($localFile)) {
+                if ($image->load($localFile)) {
                     $image->cover($width, $height);
                     $image->save($targetFile, 'png');
                     $storage->write($this->getThumbnailImageStoragePath(), file_get_contents($targetFile));
@@ -566,16 +590,16 @@ final class User extends User\UserRole implements UserInterface
      *
      * @internal
      *
-     * @return string[]|null
+     * @return string[]
      */
-    public function getAllowedLanguagesForEditingWebsiteTranslations(): ?array
+    public function getAllowedLanguagesForEditingWebsiteTranslations(): array
     {
         $mergedWebsiteTranslationLanguagesEdit = $this->getMergedWebsiteTranslationLanguagesEdit();
-        if (empty($mergedWebsiteTranslationLanguagesEdit) || $this->isAdmin()) {
-            $mergedWebsiteTranslationLanguagesView = $this->getMergedWebsiteTranslationLanguagesView();
-            if (empty($mergedWebsiteTranslationLanguagesView)) {
-                return Tool::getValidLanguages();
-            }
+        if (
+            (!$mergedWebsiteTranslationLanguagesEdit && !$this->getMergedWebsiteTranslationLanguagesView()) ||
+            $this->isAdmin()
+        ) {
+            return Tool::getValidLanguages();
         }
 
         return $mergedWebsiteTranslationLanguagesEdit;
@@ -607,9 +631,9 @@ final class User extends User\UserRole implements UserInterface
      *
      * @internal
      *
-     * @return string[]|null
+     * @return string[]
      */
-    public function getAllowedLanguagesForViewingWebsiteTranslations(): ?array
+    public function getAllowedLanguagesForViewingWebsiteTranslations(): array
     {
         $mergedWebsiteTranslationLanguagesView = $this->getMergedWebsiteTranslationLanguagesView();
         if (empty($mergedWebsiteTranslationLanguagesView) || $this->isAdmin()) {
@@ -619,7 +643,7 @@ final class User extends User\UserRole implements UserInterface
         return $mergedWebsiteTranslationLanguagesView;
     }
 
-    public function getLastLogin(): int
+    public function getLastLogin(): ?int
     {
         return $this->lastLogin;
     }
@@ -644,7 +668,7 @@ final class User extends User\UserRole implements UserInterface
         $this->keyBindings = $keyBindings;
     }
 
-    public function getTwoFactorAuthentication(string $key = null): mixed
+    public function getTwoFactorAuthentication(?string $key = null): mixed
     {
         if ($this->twoFactorAuthentication === null) {
             // set defaults if no data is present
@@ -705,5 +729,17 @@ final class User extends User\UserRole implements UserInterface
     protected function getFallbackImage(): string
     {
         return PIMCORE_WEB_ROOT . '/bundles/pimcoreadmin/img/avatar.png';
+    }
+
+    public function getDatetimeLocale(): ?string
+    {
+        return $this->datetimeLocale;
+    }
+
+    public function setDatetimeLocale(?string $datetimeLocale): static
+    {
+        $this->datetimeLocale = $datetimeLocale;
+
+        return $this;
     }
 }

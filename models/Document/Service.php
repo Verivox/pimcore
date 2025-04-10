@@ -16,12 +16,13 @@ declare(strict_types=1);
 
 namespace Pimcore\Model\Document;
 
+use Exception;
+use Pimcore;
 use Pimcore\Config;
-use Pimcore\Document\Renderer\DocumentRenderer;
 use Pimcore\Document\Renderer\DocumentRendererInterface;
 use Pimcore\Event\DocumentEvents;
 use Pimcore\Event\Model\DocumentEvent;
-use Pimcore\Image\Chromium;
+use Pimcore\Image\HtmlToImage;
 use Pimcore\Model;
 use Pimcore\Model\Document;
 use Pimcore\Model\Document\Editable\IdRewriterInterface;
@@ -44,16 +45,22 @@ use Symfony\Component\HttpFoundation\Request;
  */
 class Service extends Model\Element\Service
 {
+    /**
+     * @internal
+     */
     protected ?Model\User $_user;
 
-    protected array $_copyRecursiveIds;
+    /**
+     * @internal
+     */
+    protected array $_copyRecursiveIds = [];
 
     /**
      * @var Document[]
      */
     protected array $nearestPathCache;
 
-    public function __construct(Model\User $user = null)
+    public function __construct(?Model\User $user = null)
     {
         $this->_user = $user;
     }
@@ -62,17 +69,12 @@ class Service extends Model\Element\Service
      * Renders a document outside of a view
      *
      * Parameter order was kept for BC (useLayout before query and options).
-     *
-     * @static
-     *
-     *
      */
     public static function render(Document\PageSnippet $document, array $attributes = [], bool $useLayout = false, array $query = [], array $options = []): string
     {
-        $container = \Pimcore::getContainer();
+        $container = Pimcore::getContainer();
 
-        /** @var DocumentRendererInterface $renderer */
-        $renderer = $container->get(DocumentRenderer::class);
+        $renderer = $container->get(DocumentRendererInterface::class);
 
         // keep useLayout compatibility
         $attributes['_useLayout'] = $useLayout;
@@ -82,15 +84,14 @@ class Service extends Model\Element\Service
     }
 
     /**
-     *
      * @return Page|Document|null copied document
      *
-     * @throws \Exception
+     * @throws Exception
      */
-    public function copyRecursive(Document $target, Document $source): Page|Document|null
+    public function copyRecursive(Document $target, Document $source, bool $initial = true): Page|Document|null
     {
         // avoid recursion
-        if (!$this->_copyRecursiveIds) {
+        if ($initial) {
             $this->_copyRecursiveIds = [];
         }
         if (in_array($source->getId(), $this->_copyRecursiveIds)) {
@@ -107,7 +108,7 @@ class Service extends Model\Element\Service
         $event = new DocumentEvent($source, [
             'target_element' => $target,
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
+        Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
         $target = $event->getArgument('target_element');
 
         /** @var Document $new */
@@ -131,7 +132,7 @@ class Service extends Model\Element\Service
         $this->_copyRecursiveIds[] = $new->getId();
 
         foreach ($source->getChildren(true) as $child) {
-            $this->copyRecursive($new, $child);
+            $this->copyRecursive($new, $child, false);
         }
 
         $this->updateChildren($target, $new);
@@ -140,7 +141,7 @@ class Service extends Model\Element\Service
         $event = new DocumentEvent($new, [
             'base_element' => $source, // the element used to make a copy
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::POST_COPY);
+        Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::POST_COPY);
 
         return $new;
     }
@@ -160,7 +161,7 @@ class Service extends Model\Element\Service
         $event = new DocumentEvent($source, [
             'target_element' => $target,
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
+        Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
         $target = $event->getArgument('target_element');
 
         /**
@@ -209,7 +210,7 @@ class Service extends Model\Element\Service
         $event = new DocumentEvent($new, [
             'base_element' => $source, // the element used to make a copy
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::POST_COPY);
+        Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::POST_COPY);
 
         return $new;
     }
@@ -223,14 +224,14 @@ class Service extends Model\Element\Service
     {
         // check if the type is the same
         if (get_class($source) != get_class($target)) {
-            throw new \Exception('Source and target have to be the same type');
+            throw new Exception('Source and target have to be the same type');
         }
 
         // triggers actions before document cloning
         $event = new DocumentEvent($source, [
             'target_element' => $target,
         ]);
-        \Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
+        Pimcore::getEventDispatcher()->dispatch($event, DocumentEvents::PRE_COPY);
         $target = $event->getArgument('target_element');
 
         if ($source instanceof Document\PageSnippet) {
@@ -261,8 +262,6 @@ class Service extends Model\Element\Service
     }
 
     /**
-     *
-     *
      * @internal
      */
     public static function gridDocumentData(Document $document): array
@@ -282,8 +281,6 @@ class Service extends Model\Element\Service
     }
 
     /**
-     *
-     *
      * @internal
      */
     public static function loadAllDocumentFields(Document $doc): Document
@@ -301,12 +298,7 @@ class Service extends Model\Element\Service
         return $doc;
     }
 
-    /**
-     * @static
-     *
-     *
-     */
-    public static function pathExists(string $path, string $type = null): bool
+    public static function pathExists(string $path, ?string $type = null): bool
     {
         if (!$path) {
             return false;
@@ -322,7 +314,7 @@ class Service extends Model\Element\Service
 
                 return true;
             }
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
         }
 
         return false;
@@ -343,8 +335,6 @@ class Service extends Model\Element\Service
      *  "object" => array(...),
      *  "asset" => array(...)
      * )
-     *
-     *
      *
      * @internal
      */
@@ -404,8 +394,6 @@ class Service extends Model\Element\Service
     }
 
     /**
-     *
-     *
      * @internal
      */
     public static function getByUrl(string $url): ?Document
@@ -417,7 +405,7 @@ class Service extends Model\Element\Service
             $document = Document::getByPath($urlParts['path']);
 
             // search for a page in a site
-            if (!$document) {
+            if (!$document && isset($urlParts['host'])) {
                 $sitesList = new Model\Site\Listing();
                 $sitesObjects = $sitesList->load();
 
@@ -440,7 +428,7 @@ class Service extends Model\Element\Service
         $list->setUnpublished(true);
         $key = Element\Service::getValidKey($element->getKey(), 'document');
         if (!$key) {
-            throw new \Exception('No item key set.');
+            throw new Exception('No item key set.');
         }
         if ($nr) {
             $key = $key . '_' . $nr;
@@ -448,7 +436,7 @@ class Service extends Model\Element\Service
 
         $parent = $element->getParent();
         if (!$parent) {
-            throw new \Exception('You have to set a parent document to determine a unique Key');
+            throw new Exception('You have to set a parent document to determine a unique Key');
         }
 
         if (!$element->getId()) {
@@ -467,8 +455,6 @@ class Service extends Model\Element\Service
 
     /**
      * Get the nearest document by path. Used to match nearest document for a static route.
-     *
-     *
      *
      * @internal
      */
@@ -540,13 +526,11 @@ class Service extends Model\Element\Service
     }
 
     /**
-     *
-     *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
-    public static function generatePagePreview(int $id, Request $request = null, string $hostUrl = null): bool
+    public static function generatePagePreview(int $id, ?Request $request = null, ?string $hostUrl = null): bool
     {
         $filesystem = new Filesystem();
         $doc = Document\Page::getById($id);
@@ -566,7 +550,7 @@ class Service extends Model\Element\Service
 
         $filesystem->mkdir(dirname($file), 0775);
 
-        if (Chromium::convert($url, $tmpFile)) {
+        if (HtmlToImage::convert($url, $tmpFile)) {
             $im = \Pimcore\Image::getInstance();
             $im->load($tmpFile);
             $im->scaleByWidth(800);

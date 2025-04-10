@@ -107,6 +107,7 @@ services:
 
     Pimcore\Model\DataObject\QuantityValue\UnitConversionService:
         public: true
+    Pimcore\Model\DataObject\QuantityValue\Service: ~
 
     Pimcore\Model\DataObject\QuantityValue\QuantityValueConverterInterface:
         public: true
@@ -137,6 +138,10 @@ services:
     Pimcore\Image\Adapter\Imagick:
         shared: false
         public: true
+
+    Pimcore\Helper\SymfonyExpression\ExpressionServiceInterface:
+        public: true
+        class: Pimcore\Helper\SymfonyExpression\ExpressionService
 
     Pimcore\Image\Adapter\GD:
         shared: false
@@ -180,4 +185,20 @@ services:
     Pimcore\Model\Notification\Service\NotificationService:
         public: true
 
+    Pimcore\Console\CommandContextHolder: ~
+
+
+    Pimcore\Bundle\CoreBundle\EventListener\ConsoleCommandListener:
+        tags:
+            - { name: 'kernel.event_subscriber' }
+
     Pimcore\Model\Notification\Service\UserService: ~
+
+    # Doctrine schema filter to only include managed tables
+    Pimcore\Db\ManagedTablesOnlyFilter.default:
+        class: Pimcore\Db\ManagedTablesOnlyFilter
+        arguments:
+            $registry: '@doctrine'
+            $commandContextHolder: '@Pimcore\Console\CommandContextHolder'
+        tags:
+            - { name: doctrine.dbal.schema_filter, connection: default }

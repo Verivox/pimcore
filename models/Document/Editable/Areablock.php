@@ -15,6 +15,9 @@
 
 namespace Pimcore\Model\Document\Editable;
 
+use Exception;
+use Generator;
+use Pimcore;
 use Pimcore\Document\Editable\Block\BlockName;
 use Pimcore\Document\Editable\EditableHandler;
 use Pimcore\Extension\Document\Areabrick\AreabrickManagerInterface;
@@ -22,7 +25,6 @@ use Pimcore\Extension\Document\Areabrick\EditableDialogBoxInterface;
 use Pimcore\Model;
 use Pimcore\Model\Document;
 use Pimcore\Templating\Renderer\EditableRenderer;
-use Pimcore\Tool;
 use Pimcore\Tool\HtmlUtils;
 
 /**
@@ -114,7 +116,7 @@ class Areablock extends Model\Document\Editable implements BlockInterface
         }
     }
 
-    public function getIterator(): \Generator
+    public function getIterator(): Generator
     {
         while ($this->loop()) {
             yield $this->getCurrentIndex();
@@ -211,7 +213,7 @@ class Areablock extends Model\Document\Editable implements BlockInterface
      *
      * @return string|void
      */
-    public function content(Area\Info $info = null, array $templateParams = [], bool $return = false)
+    public function content(?Area\Info $info = null, array $templateParams = [], bool $return = false)
     {
         if (!$info) {
             $info = $this->buildInfoObject();
@@ -243,15 +245,13 @@ class Areablock extends Model\Document\Editable implements BlockInterface
     protected function getEditableHandler(): EditableHandler
     {
         // TODO inject area handler via DI when editables are built through container
-        return \Pimcore::getContainer()->get(EditableHandler::class);
+        return Pimcore::getContainer()->get(EditableHandler::class);
     }
 
     public function setDataFromResource(mixed $data): static
     {
-        $this->indices = Tool\Serialize::unserialize($data);
-        if (!is_array($this->indices)) {
-            $this->indices = [];
-        }
+        $unserializedData = $this->getUnserializedData($data) ?? [];
+        $this->indices = $unserializedData;
 
         return $this;
     }
@@ -355,7 +355,7 @@ class Areablock extends Model\Document\Editable implements BlockInterface
         $this->outputEditmode($html);
     }
 
-    public function blockStart(Area\Info $info = null): array
+    public function blockStart(?Area\Info $info = null): array
     {
         $this->blockStarted = true;
         $attributes = [
@@ -374,7 +374,7 @@ class Areablock extends Model\Document\Editable implements BlockInterface
             'data-hidden' => $hidden,
         ];
 
-        $areabrickManager = \Pimcore::getContainer()->get(AreabrickManagerInterface::class);
+        $areabrickManager = Pimcore::getContainer()->get(AreabrickManagerInterface::class);
 
         $dialogConfig = null;
         $brick = $areabrickManager->getBrick($this->indices[$this->current]['type']);
@@ -399,8 +399,9 @@ class Areablock extends Model\Document\Editable implements BlockInterface
 
         $dialogHtml = '';
         if ($dialogConfig) {
-            $editableRenderer = \Pimcore::getContainer()->get(EditableRenderer::class);
-            $this->renderDialogBoxEditables($dialogConfig->getItems(), $editableRenderer, $dialogConfig->getId(), $dialogHtml);
+            $editableRenderer = Pimcore::getContainer()->get(EditableRenderer::class);
+            $items = $this->renderDialogBoxEditables($dialogConfig->getItems(), $editableRenderer, $dialogConfig->getId(), $dialogHtml);
+            $dialogConfig->setItems($items);
         }
 
         return [
@@ -416,31 +417,48 @@ class Areablock extends Model\Document\Editable implements BlockInterface
      * This method needs to be `protected` as it is used in other bundles such as pimcore/headless-documents
      *
      *
-     * @throws \Exception
+     * @throws Exception
      *
      * @internal
      */
-    protected function renderDialogBoxEditables(array $config, EditableRenderer $editableRenderer, string $dialogId, string &$html): void
+    protected function renderDialogBoxEditables(array|Document\Editable $config, EditableRenderer $editableRenderer, string $dialogId, string &$html): array
     {
+        if ($config instanceof BlockInterface || $config instanceof Area) {
+            // Unsupported element was passed (e.g., Block, Areablock, ...)
+            // or an Areas was passed, which is not supported to avoid too long editable names
+            throw new Exception(sprintf('Using editables of type "%s" for the editable dialog "%s" is not supported.', get_debug_type($config), $dialogId));
+        } elseif ($config instanceof Document\Editable) {
+            // Map editable to array config
+            $config = [
+                'type' => $config->getType(),
+                'name' => $config->getName(),
+                'label' => $config->getLabel(),
+                'config' => $config->getConfig(),
+                'description' => $config->getDialogDescription(),
+            ];
+        }
+
         if (isset($config['items']) && is_array($config['items'])) {
             // layout component
-            foreach ($config['items'] as $child) {
-                $this->renderDialogBoxEditables($child, $editableRenderer, $dialogId, $html);
+            foreach ($config['items'] as $index => $child) {
+                $config['items'][$index] = $this->renderDialogBoxEditables($child, $editableRenderer, $dialogId, $html);
             }
         } elseif (isset($config['name']) && isset($config['type'])) {
             $editable = $editableRenderer->getEditable($this->getDocument(), $config['type'], $config['name'], $config['config'] ?? []);
             if (!$editable instanceof Document\Editable) {
-                throw new \Exception(sprintf('Invalid editable type "%s" configured for Dialog Box', $config['type']));
+                throw new Exception(sprintf('Invalid editable type "%s" configured for Dialog Box', $config['type']));
             }
 
             $editable->setInDialogBox($dialogId);
             $editable->addConfig('dialogBoxConfig', $config);
             $html .= $editable->render();
         } else {
-            foreach ($config as $item) {
-                $this->renderDialogBoxEditables($item, $editableRenderer, $dialogId, $html);
+            foreach ($config as $index => $item) {
+                $config['items'][$index] = $this->renderDialogBoxEditables($item, $editableRenderer, $dialogId, $html);
             }
         }
+
+        return $config;
     }
 
     public function blockEnd(): void

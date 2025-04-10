@@ -209,6 +209,12 @@ pimcore.layout.portlets.customreports = Class.create(pimcore.layout.portlets.abs
                     reader: {
                         type: 'json',
                         rootProperty: 'data'
+                    },
+                    actionMethods: {
+                        create: 'POST',
+                        read: 'POST',
+                        update: 'POST',
+                        destroy: 'POST'
                     }
                 },
                 fields: storeFields
@@ -241,6 +247,7 @@ pimcore.layout.portlets.customreports = Class.create(pimcore.layout.portlets.abs
                 width: '100%',
                 height: 350,
                 insetPadding: 5,
+                downloadServerUrl: '/disabled-server-url/',
                 innerPadding: 10,
                 legend: {
                     docked: 'bottom'
@@ -289,6 +296,7 @@ pimcore.layout.portlets.customreports = Class.create(pimcore.layout.portlets.abs
 
             var chart = Ext.create('Ext.chart.PolarChart', {
                 xtype: "polar",
+                downloadServerUrl: '/disabled-server-url/',
                 store: chartStore,
                 theme: 'default-gradients',
                 width: '100%',
@@ -462,6 +470,8 @@ pimcore.layout.portlets.customreports = Class.create(pimcore.layout.portlets.abs
                                     pimcore.helpers.openElement(id, "asset");
                                 } else if (action == "openObject") {
                                     pimcore.helpers.openElement(id, "object");
+                                } else if (action === "openUrl") {
+                                    window.open(id);
                                 }
                             }.bind(this, colConfig)
                         }
@@ -525,16 +535,13 @@ pimcore.layout.portlets.customreports = Class.create(pimcore.layout.portlets.abs
     },
 
     openReport: function() {
-        var toolbar = pimcore.globalmanager.get("layout_toolbar");
-
-        var reportClass = this.reportConfig.reportClass ? this.reportConfig.reportClass : "pimcore.report.custom.report";
-        toolbar.showReports(reportClass, {
+        var reportClass = this.reportConfig.reportClass ? this.reportConfig.reportClass : "pimcore.bundle.customreports.custom.report";
+        customreports.showReports(reportClass, {
             name: this.reportConfig.name,
             text: this.reportConfig.niceName,
             niceName: this.reportConfig.niceName,
             iconCls: this.reportConfig.iconClass
         });
-
     }
 
 });

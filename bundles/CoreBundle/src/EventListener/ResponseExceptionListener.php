@@ -17,8 +17,10 @@ declare(strict_types=1);
 namespace Pimcore\Bundle\CoreBundle\EventListener;
 
 use Doctrine\DBAL\Connection;
+use Exception;
+use Pimcore;
 use Pimcore\Bundle\CoreBundle\EventListener\Traits\PimcoreContextAwareTrait;
-use Pimcore\Document\Renderer\DocumentRenderer;
+use Pimcore\Document\Renderer\DocumentRendererInterface;
 use Pimcore\Http\Exception\ResponseException;
 use Pimcore\Http\Request\Resolver\PimcoreContextResolver;
 use Pimcore\Http\Request\Resolver\SiteResolver;
@@ -42,7 +44,7 @@ class ResponseExceptionListener implements EventSubscriberInterface
     use PimcoreContextAwareTrait;
 
     public function __construct(
-        protected DocumentRenderer $documentRenderer,
+        protected DocumentRendererInterface $documentRenderer,
         protected Connection $db,
         protected SystemSettingsConfig $config,
         protected Document\Service $documentService,
@@ -78,7 +80,7 @@ class ResponseExceptionListener implements EventSubscriberInterface
 
     protected function handleErrorPage(ExceptionEvent $event): void
     {
-        if (\Pimcore::inDebugMode()) {
+        if (Pimcore::inDebugMode()) {
             return;
         }
 
@@ -116,7 +118,7 @@ class ResponseExceptionListener implements EventSubscriberInterface
                 'exception' => $exception,
                 PimcoreContextListener::ATTRIBUTE_PIMCORE_CONTEXT_FORCE_RESOLVING => true,
             ]);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             // we are even not able to render the error page, so we send the client a unicorn
             $response = 'Page not found. 🦄';
             $this->logger->emergency('Unable to render error page, exception thrown');
@@ -127,7 +129,7 @@ class ResponseExceptionListener implements EventSubscriberInterface
     }
 
     /**
-     * @throws \Exception
+     * @throws Exception
      */
     private function determineErrorPath(Request $request): string
     {
